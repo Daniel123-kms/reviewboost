@@ -1,36 +1,52 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ReviewBoost
 
-## Getting Started
+Professionelle Review-Management-Plattform gebaut mit Next.js 16, Supabase Auth & Supabase DB.
 
-First, run the development server:
+## Tech Stack
+- **Framework:** Next.js 16 (App Router)
+- **Auth + DB:** Supabase
+- **Styling:** 100% Inline Styles (kein CSS Framework)
+- **Deployment:** Vercel-ready
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## Setup in 5 Minuten
+
+### 1. Supabase Projekt erstellen
+1. Gehe zu [supabase.com](https://supabase.com) → Neues Projekt anlegen
+2. Unter **SQL Editor** → das komplette `supabase-schema.sql` ausführen
+3. Unter **Authentication → Email** → E-Mail-Bestätigung optional deaktivieren für lokale Entwicklung
+
+### 2. Environment Variables setzen
+Trage deine Supabase-Werte in `.env.local` ein:
+
+```
+NEXT_PUBLIC_SUPABASE_URL=https://xxxxxxxx.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6...
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Beide Werte findest du in Supabase unter **Project Settings → API**.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 3. Lokal starten
+```bash
+npm install
+npm run dev
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### 4. Deploy auf Vercel
+1. Repository auf GitHub pushen
+2. Auf [vercel.com](https://vercel.com) → "Import Project" → Repo wählen
+3. Environment Variables eintragen
+4. Deploy — fertig!
 
-## Learn More
+## Seiten
 
-To learn more about Next.js, take a look at the following resources:
+| Route | Beschreibung |
+|-------|-------------|
+| `/` | Landing Page |
+| `/signup` | Registrierung |
+| `/login` | Anmeldung |
+| `/dashboard` | Geschütztes Review-Dashboard |
+| `/auth/callback` | Supabase Auth-Callback |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Datenbankschema
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Tabelle `reviews` — siehe `supabase-schema.sql`
