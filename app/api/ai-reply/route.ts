@@ -2,8 +2,6 @@ import { NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-
 export async function POST(request: Request) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -11,6 +9,13 @@ export async function POST(request: Request) {
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+
+  const anthropicKey = process.env.ANTHROPIC_API_KEY
+  if (!anthropicKey || anthropicKey === 'your_anthropic_api_key') {
+    return NextResponse.json({ error: 'Anthropic API Key nicht konfiguriert.' }, { status: 500 })
+  }
+
+  const anthropic = new Anthropic({ apiKey: anthropicKey })
 
   const { reviewContent, authorName, rating, platform, style, businessName } = await request.json()
 

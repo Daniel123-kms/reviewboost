@@ -2,8 +2,6 @@ import { NextResponse } from 'next/server'
 import { Resend } from 'resend'
 import { createClient } from '@/lib/supabase/server'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
-
 export async function POST(request: Request) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -100,6 +98,13 @@ export async function POST(request: Request) {
 </body>
 </html>
   `
+
+  const apiKey = process.env.RESEND_API_KEY
+  if (!apiKey || apiKey === 'your_resend_api_key') {
+    return NextResponse.json({ error: 'Resend API Key nicht konfiguriert.' }, { status: 500 })
+  }
+
+  const resend = new Resend(apiKey)
 
   try {
     const { data, error } = await resend.emails.send({
