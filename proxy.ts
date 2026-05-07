@@ -40,19 +40,8 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  // Logged in + going to dashboard → check if business registered
-  if (user && path === '/dashboard') {
-    const { count } = await supabase
-      .from('businesses')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', user.id)
-
-    if (count === 0) {
-      const url = request.nextUrl.clone()
-      url.pathname = '/onboarding'
-      return NextResponse.redirect(url)
-    }
-  }
+  // Logged in + going to dashboard: no forced onboarding redirect.
+  // Dashboard itself handles the empty state when no businesses exist.
 
   return supabaseResponse
 }

@@ -101,7 +101,7 @@ function SidebarNavItem({
 }
 
 /* ─── MAIN COMPONENT ─── */
-export default function DashboardClient({ user, initialReviews }: { user: User; initialReviews: Review[] }) {
+export default function DashboardClient({ user, initialReviews, hasBusinesses = true }: { user: User; initialReviews: Review[]; hasBusinesses?: boolean }) {
   const router = useRouter();
   const [reviews, setReviews] = useState<Review[]>(initialReviews);
   const [activeSection, setActiveSection] = useState<Section>("reviews");
@@ -287,6 +287,20 @@ export default function DashboardClient({ user, initialReviews }: { user: User; 
             </div>
           )}
         </div>
+
+        {/* Setup Banner — only shown when no business is registered yet */}
+        {!hasBusinesses && (
+          <div style={{ margin: "24px 36px 0", padding: "20px 24px", backgroundColor: "#fffbeb", border: "1.5px solid #fde68a", borderRadius: 14, display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 28 }}>🏪</span>
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <p style={{ fontSize: 15, fontWeight: 700, color: "#92400e", margin: "0 0 3px" }}>Kein Betrieb registriert</p>
+              <p style={{ fontSize: 13, color: "#b45309", margin: 0 }}>Füge deinen Betrieb hinzu, um Bewertungseinladungen zu versenden und QR-Codes zu erstellen.</p>
+            </div>
+            <a href="/onboarding" style={{ padding: "10px 20px", backgroundColor: "#f59e0b", color: "#ffffff", textDecoration: "none", borderRadius: 10, fontSize: 14, fontWeight: 700, whiteSpace: "nowrap" }}>
+              Betrieb einrichten →
+            </a>
+          </div>
+        )}
 
         {/* Section Content */}
         <div style={{ flex: 1, padding: "28px 36px" }}>

@@ -13,11 +13,10 @@ export default async function DashboardPage() {
     redirect("/login");
   }
 
-  const { data: reviews } = await supabase
-    .from("reviews")
-    .select("*")
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false });
+  const [{ data: reviews }, { count: businessCount }] = await Promise.all([
+    supabase.from("reviews").select("*").eq("user_id", user.id).order("created_at", { ascending: false }),
+    supabase.from("businesses").select("*", { count: "exact", head: true }).eq("user_id", user.id),
+  ]);
 
   const userName = user.user_metadata?.full_name || user.email?.split("@")[0] || "Benutzer";
 
@@ -25,6 +24,7 @@ export default async function DashboardPage() {
     <DashboardClient
       user={{ id: user.id, email: user.email ?? "", name: userName }}
       initialReviews={reviews ?? []}
+      hasBusinesses={(businessCount ?? 0) > 0}
     />
   );
 }
