@@ -313,42 +313,13 @@ export default function SettingsSection({ userId, userEmail, userName }: { userI
         )}
       </div>
 
-      {/* API Keys */}
-      <div style={{ backgroundColor: "#ffffff", borderRadius: 16, padding: 28, border: "1px solid #e8edf3", boxShadow: "0 1px 6px rgba(0,0,0,0.04)" }}>
-        <h3 style={{ fontSize: 16, fontWeight: 700, color: "#0f172a", margin: "0 0 6px" }}>🔑 Google Places API</h3>
-        <p style={{ fontSize: 13, color: "#64748b", margin: "0 0 16px", lineHeight: 1.6 }}>
-          Trage deinen Google Places API Key ein, um Konkurrenten-Bewertungen zu checken. <a href="https://console.cloud.google.com" target="_blank" rel="noopener noreferrer" style={{ color: "#6366f1", fontWeight: 600, textDecoration: "none" }}>Jetzt API Key erstellen →</a>
-        </p>
-        <form onSubmit={handleSaveApiKey} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div>
-            <input
-              type="password"
-              value={googleApiKey}
-              onChange={(e) => { setGoogleApiKey(e.target.value); setApiKeySaved(false); }}
-              placeholder="AIzaSyD..."
-              style={{ width: "100%", padding: "11px 13px", borderRadius: 10, border: "1.5px solid #e2e8f0", fontSize: 14, fontFamily: "inherit", backgroundColor: "#f8fafc", outline: "none", color: "#0f172a", boxSizing: "border-box" }}
-              onFocus={(e) => (e.target.style.borderColor = "#6366f1")}
-              onBlur={(e) => (e.target.style.borderColor = "#e2e8f0")}
-            />
-            <p style={{ fontSize: 11, color: "#94a3b8", margin: "6px 0 0" }}>🔒 Wird verschlüsselt lokal gespeichert, nie an Server übertragen.</p>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <button type="submit" disabled={savingApiKey || !googleApiKey.trim()} style={{ padding: "10px 22px", borderRadius: 10, border: "none", backgroundColor: savingApiKey ? "#a5b4fc" : googleApiKey.trim() ? "#6366f1" : "#e2e8f0", color: googleApiKey.trim() ? "#fff" : "#94a3b8", fontSize: 14, fontWeight: 700, cursor: savingApiKey || !googleApiKey.trim() ? "not-allowed" : "pointer", fontFamily: "inherit" }}>
-              {savingApiKey ? "Speichert..." : "API Key speichern"}
-            </button>
-            {apiKeySaved && <span style={{ fontSize: 13, color: "#15803d", fontWeight: 600 }}>✓ Gespeichert</span>}
-            {googleApiKey && !apiKeySaved && <span style={{ fontSize: 12, color: "#f97316" }}>⚠ Ungespeichert</span>}
-          </div>
-        </form>
-      </div>
-
       {/* Google Import */}
       <div style={{ backgroundColor: "#ffffff", borderRadius: 16, padding: 28, border: "1px solid #e8edf3", boxShadow: "0 1px 6px rgba(0,0,0,0.04)" }}>
         <h3 style={{ fontSize: 16, fontWeight: 700, color: "#0f172a", margin: "0 0 6px" }}>
-          <span style={{ fontSize: 20, marginRight: 8 }}>🔴</span>Google-Bewertungen importieren
+          📥 Google-Bewertungen importieren
         </h3>
         <p style={{ fontSize: 13, color: "#64748b", margin: "0 0 18px", lineHeight: 1.6 }}>
-          Google Maps Link einfügen — die App holt die verfügbaren Bewertungen automatisch rein.
+          Google Maps Link deines Betriebs einfügen — wir holen deine Bewertungen automatisch rein.
         </p>
 
         {importResult && (
@@ -403,7 +374,7 @@ export default function SettingsSection({ userId, userEmail, userName }: { userI
           </button>
         </div>
         <p style={{ fontSize: 11, color: "#94a3b8", margin: "8px 0 0" }}>
-          Google Places API gibt max. 5 Bewertungen zurück. Für alle Bewertungen → Google Business Profile OAuth (kommt bald).
+          💡 Aktuell werden bis zu 5 aktuelle Bewertungen importiert. Vollständiger Import via Google Business Profile kommt bald.
         </p>
       </div>
 
