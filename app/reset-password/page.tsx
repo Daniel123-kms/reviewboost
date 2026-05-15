@@ -12,11 +12,17 @@ export default function ResetPasswordPage() {
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [ready, setReady] = useState(false);
+  const [sessionReady, setSessionReady] = useState(false);
 
   useEffect(() => {
-    // Supabase puts the token in the URL hash — just need to be on this page
-    setReady(true);
+    const supabase = createClient();
+    // Supabase fires PASSWORD_RECOVERY once it processes the token from the URL hash
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "PASSWORD_RECOVERY") {
+        setSessionReady(true);
+      }
+    });
+    return () => subscription.unsubscribe();
   }, []);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -35,8 +41,6 @@ export default function ResetPasswordPage() {
     }
     setLoading(false);
   }
-
-  if (!ready) return null;
 
   return (
     <div style={{
@@ -60,6 +64,12 @@ export default function ResetPasswordPage() {
               <h1 style={{ fontSize: 22, fontWeight: 800, color: "#0f172a", margin: "0 0 12px" }}>Passwort geändert!</h1>
               <p style={{ fontSize: 14, color: "#64748b", margin: 0 }}>Du wirst automatisch weitergeleitet...</p>
             </div>
+          ) : !sessionReady ? (
+            <div style={{ textAlign: "center", padding: "20px 0" }}>
+              <div style={{ fontSize: 40, marginBottom: 16 }}>🔐</div>
+              <h1 style={{ fontSize: 20, fontWeight: 800, color: "#0f172a", margin: "0 0 8px" }}>Link wird geprüft...</h1>
+              <p style={{ fontSize: 14, color: "#94a3b8" }}>Einen Moment bitte.</p>
+            </div>
           ) : (
             <>
               <h1 style={{ fontSize: 22, fontWeight: 800, color: "#0f172a", margin: "0 0 8px" }}>Neues Passwort setzen</h1>
@@ -76,7 +86,7 @@ export default function ResetPasswordPage() {
                   <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 6 }}>Neues Passwort</label>
                   <input
                     type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-                    required placeholder="Mindestens 6 Zeichen"
+                    required placeholder="Mindestens 6 Zeichen" autoFocus
                     style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1.5px solid #e2e8f0", fontSize: 15, outline: "none", boxSizing: "border-box", fontFamily: "inherit", color: "#0f172a", backgroundColor: "#f8fafc" }}
                     onFocus={(e) => (e.target.style.borderColor = "#6366f1")}
                     onBlur={(e) => (e.target.style.borderColor = "#e2e8f0")}
