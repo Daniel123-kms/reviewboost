@@ -42,8 +42,10 @@ export async function POST(request: Request) {
       await supabase.from("businesses").insert({
         user_id: user.id,
         name: "Marco's Fresh Greek",
-        address: "Mariahilfer Straße, 1060 Wien",
-        google_review_url: "https://maps.google.com/?q=marcos+fresh+greek+vienna",
+        address: "Landstraßer Hauptstraße 73, 1030 Wien",
+        phone: "+43 1 2864909",
+        google_maps_url: "https://www.google.com/maps/place/Marco's+Fresh+Greek/@48.2013,16.3897,17z",
+        google_review_url: "https://search.google.com/local/writereview?placeid=ChIJN1t_tDeuEmsRUsedpd-_nqo",
       });
     }
 
