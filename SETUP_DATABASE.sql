@@ -1,6 +1,6 @@
 -- ============================================================
--- ReviewBoost — Consolidated Database Setup
--- Run this entire file in your Supabase SQL Editor (https://supabase.com/dashboard)
+-- ReviewBoost — Consolidated Database Setup (idempotent)
+-- Run this entire file in your Supabase SQL Editor
 -- ============================================================
 
 
@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS public.reviews (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
   author_name text NOT NULL,
-  platform text NOT NULL CHECK (platform IN ('Google', 'Tripadvisor', 'Booking.com', 'Yelp', 'Facebook', 'Lieferando', 'Foodora')),
+  platform text NOT NULL,
   rating integer NOT NULL CHECK (rating BETWEEN 1 AND 5),
   content text NOT NULL,
   responded boolean DEFAULT false NOT NULL,
@@ -20,23 +20,31 @@ CREATE TABLE IF NOT EXISTS public.reviews (
   created_at timestamptz DEFAULT now() NOT NULL
 );
 
+ALTER TABLE public.reviews ADD COLUMN IF NOT EXISTS response_text text;
+ALTER TABLE public.reviews ADD COLUMN IF NOT EXISTS business_id uuid;
+
 ALTER TABLE public.reviews ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view own reviews" ON public.reviews;
+DROP POLICY IF EXISTS "Users can insert own reviews" ON public.reviews;
+DROP POLICY IF EXISTS "Users can update own reviews" ON public.reviews;
+DROP POLICY IF EXISTS "Users can delete own reviews" ON public.reviews;
+DROP POLICY IF EXISTS "Widget read" ON public.reviews;
+
 CREATE POLICY "Users can view own reviews"
-  ON public.reviews FOR SELECT
-  USING (auth.uid() = user_id);
+  ON public.reviews FOR SELECT USING (auth.uid() = user_id);
 
 CREATE POLICY "Users can insert own reviews"
-  ON public.reviews FOR INSERT
-  WITH CHECK (auth.uid() = user_id);
+  ON public.reviews FOR INSERT WITH CHECK (auth.uid() = user_id);
 
 CREATE POLICY "Users can update own reviews"
-  ON public.reviews FOR UPDATE
-  USING (auth.uid() = user_id);
+  ON public.reviews FOR UPDATE USING (auth.uid() = user_id);
 
 CREATE POLICY "Users can delete own reviews"
-  ON public.reviews FOR DELETE
-  USING (auth.uid() = user_id);
+  ON public.reviews FOR DELETE USING (auth.uid() = user_id);
+
+CREATE POLICY "Widget read"
+  ON public.reviews FOR SELECT TO anon USING (true);
 
 
 -- ============================================================
@@ -58,11 +66,24 @@ CREATE TABLE IF NOT EXISTS public.businesses (
   photo_url text,
   chain_name text,
   is_chain_member boolean DEFAULT false,
+  logo_url text,
+  brand_color text,
+  category text,
   created_at timestamptz DEFAULT now() NOT NULL,
   updated_at timestamptz DEFAULT now() NOT NULL
 );
 
+ALTER TABLE public.businesses ADD COLUMN IF NOT EXISTS logo_url text;
+ALTER TABLE public.businesses ADD COLUMN IF NOT EXISTS brand_color text;
+ALTER TABLE public.businesses ADD COLUMN IF NOT EXISTS category text;
+ALTER TABLE public.businesses ADD COLUMN IF NOT EXISTS updated_at timestamptz DEFAULT now();
+
 ALTER TABLE public.businesses ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users can view own businesses" ON public.businesses;
+DROP POLICY IF EXISTS "Users can insert own businesses" ON public.businesses;
+DROP POLICY IF EXISTS "Users can update own businesses" ON public.businesses;
+DROP POLICY IF EXISTS "Users can delete own businesses" ON public.businesses;
 
 CREATE POLICY "Users can view own businesses"
   ON public.businesses FOR SELECT USING (auth.uid() = user_id);
@@ -76,16 +97,12 @@ CREATE POLICY "Users can update own businesses"
 CREATE POLICY "Users can delete own businesses"
   ON public.businesses FOR DELETE USING (auth.uid() = user_id);
 
--- Link reviews to businesses
-ALTER TABLE public.reviews
-  ADD COLUMN IF NOT EXISTS business_id uuid REFERENCES public.businesses(id) ON DELETE SET NULL;
-
 
 -- ============================================================
 -- SECTION 3: Reply Templates
 -- ============================================================
 
-CREATE TABLE IF NOT EXISTS reply_templates (
+CREATE TABLE IF NOT EXISTS public.reply_templates (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
@@ -93,21 +110,21 @@ CREATE TABLE IF NOT EXISTS reply_templates (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-ALTER TABLE reply_templates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.reply_templates ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users manage own templates" ON public.reply_templates;
 
 CREATE POLICY "Users manage own templates"
-  ON reply_templates
-  FOR ALL
-  TO authenticated
+  ON public.reply_templates FOR ALL TO authenticated
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
 
 
 -- ============================================================
--- SECTION 4: Feedback Submissions (public funnel)
+-- SECTION 4: Feedback Submissions
 -- ============================================================
 
-CREATE TABLE IF NOT EXISTS feedback_submissions (
+CREATE TABLE IF NOT EXISTS public.feedback_submissions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   business_owner_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   rating INT NOT NULL CHECK (rating BETWEEN 1 AND 5),
@@ -115,43 +132,24 @@ CREATE TABLE IF NOT EXISTS feedback_submissions (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-ALTER TABLE feedback_submissions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.feedback_submissions ENABLE ROW LEVEL SECURITY;
 
--- Anonymous visitors can insert (public funnel)
+DROP POLICY IF EXISTS "Public funnel insert" ON public.feedback_submissions;
+DROP POLICY IF EXISTS "Owners read own feedback" ON public.feedback_submissions;
+
 CREATE POLICY "Public funnel insert"
-  ON feedback_submissions
-  FOR INSERT
-  TO anon
-  WITH CHECK (true);
+  ON public.feedback_submissions FOR INSERT TO anon WITH CHECK (true);
 
--- Business owners can read their own submissions
 CREATE POLICY "Owners read own feedback"
-  ON feedback_submissions
-  FOR SELECT
-  TO authenticated
+  ON public.feedback_submissions FOR SELECT TO authenticated
   USING (auth.uid() = business_owner_id);
 
 
 -- ============================================================
--- SECTION 5: Widget — allow anonymous reads of reviews
+-- SECTION 5: Delivery Platform Ratings
 -- ============================================================
 
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies
-    WHERE tablename = 'reviews' AND policyname = 'Widget read'
-  ) THEN
-    EXECUTE 'CREATE POLICY "Widget read" ON reviews FOR SELECT TO anon USING (true)';
-  END IF;
-END $$;
-
-
--- ============================================================
--- SECTION 6: Delivery Platform Ratings
--- ============================================================
-
-CREATE TABLE IF NOT EXISTS delivery_platform_ratings (
+CREATE TABLE IF NOT EXISTS public.delivery_platform_ratings (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
   platform TEXT NOT NULL,
@@ -159,20 +157,25 @@ CREATE TABLE IF NOT EXISTS delivery_platform_ratings (
   review_count INT,
   restaurant_name TEXT,
   checked_at TIMESTAMP DEFAULT NOW(),
-  created_at TIMESTAMP DEFAULT NOW(),
-  UNIQUE(user_id, platform, checked_at::date)
+  created_at TIMESTAMP DEFAULT NOW()
 );
 
+ALTER TABLE public.delivery_platform_ratings ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users manage own delivery ratings" ON public.delivery_platform_ratings;
+
+CREATE POLICY "Users manage own delivery ratings"
+  ON public.delivery_platform_ratings FOR ALL TO authenticated
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
 
 -- ============================================================
--- SECTION 7: Indexes for performance
+-- SECTION 6: Indexes
 -- ============================================================
 
-CREATE INDEX IF NOT EXISTS idx_reply_templates_user ON reply_templates(user_id);
-CREATE INDEX IF NOT EXISTS idx_feedback_owner ON feedback_submissions(business_owner_id);
-CREATE INDEX IF NOT EXISTS idx_feedback_created ON feedback_submissions(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_delivery_ratings_user_checked ON delivery_platform_ratings(user_id, checked_at DESC);
 CREATE INDEX IF NOT EXISTS idx_reviews_user ON public.reviews(user_id);
 CREATE INDEX IF NOT EXISTS idx_businesses_user ON public.businesses(user_id);
-
--- Run this entire file in your Supabase SQL Editor (https://supabase.com/dashboard)
+CREATE INDEX IF NOT EXISTS idx_reply_templates_user ON public.reply_templates(user_id);
+CREATE INDEX IF NOT EXISTS idx_feedback_owner ON public.feedback_submissions(business_owner_id);
+CREATE INDEX IF NOT EXISTS idx_delivery_ratings_user ON public.delivery_platform_ratings(user_id, checked_at DESC);
