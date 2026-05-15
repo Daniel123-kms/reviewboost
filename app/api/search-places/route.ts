@@ -10,8 +10,9 @@ export async function GET(request: Request) {
 
   const apiKey = process.env.GOOGLE_PLACES_API_KEY
 
-  if (!apiKey) {
-    return NextResponse.json({ error: 'Google Places API Key nicht konfiguriert.' }, { status: 500 })
+  if (!apiKey || apiKey === 'your_google_places_api_key') {
+    // No API key configured — return empty so onboarding falls back to manual entry
+    return NextResponse.json({ results: [] })
   }
 
   try {

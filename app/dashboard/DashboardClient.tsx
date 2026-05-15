@@ -1,131 +1,202 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import AnalyticsSection from "./AnalyticsSection";
+import FunnelSection from "./FunnelSection";
+import TemplatesSection from "./TemplatesSection";
+import WidgetSection from "./WidgetSection";
+import SettingsSection from "./SettingsSection";
+import StrategieSection from "./StrategieSection";
+import KampagnenSection from "./KampagnenSection";
+import PrintAssetsSection from "./PrintAssetsSection";
+import ReviewManagementSection from "./ReviewManagementSection";
+import QRStudioSection from "./QRStudioSection";
+import KonkurrenzRadarSection from "./KonkurrenzRadarSection";
 
+/* ─── TYPES ─── */
 type Review = {
-  id: string;
-  user_id: string;
-  author_name: string;
-  platform: string;
-  rating: number;
-  content: string;
-  created_at: string;
-  responded: boolean;
+  id: string; user_id: string; author_name: string; platform: string;
+  rating: number; content: string; created_at: string; responded: boolean;
 };
-
 type User = { id: string; email: string; name: string };
-type Section = "reviews" | "invite" | "qr";
+type BusinessProfile = {
+  name: string;
+  logoUrl: string | null;
+  brandColor: string | null;
+  googleReviewUrl: string | null;
+  address: string | null;
+  phone: string | null;
+  category: string | null;
+};
+type Section = "home" | "reviews" | "akquise" | "markt" | "settings";
 type EmailTemplate = "freundlich" | "professionell" | "gastro";
 
-const PLATFORMS = ["Google", "Tripadvisor", "Booking.com", "Yelp", "Facebook"] as const;
+type DeliveryRating = {
+  platform: string;
+  rating: number | null;
+  reviewCount: number | null;
+  name: string | null;
+  error: string | null;
+};
 
+/* ─── DESIGN TOKENS ─── */
+const PLATFORMS = ["Google", "Tripadvisor", "Booking.com", "Facebook", "Lieferando", "Foodora"] as const;
 const PLATFORM_COLORS: Record<string, { bg: string; color: string; border: string; accent: string }> = {
   Google: { bg: "#fef3c7", color: "#b45309", border: "#fde68a", accent: "#f59e0b" },
   Tripadvisor: { bg: "#dcfce7", color: "#15803d", border: "#bbf7d0", accent: "#22c55e" },
   "Booking.com": { bg: "#dbeafe", color: "#1d4ed8", border: "#bfdbfe", accent: "#3b82f6" },
-  Yelp: { bg: "#fee2e2", color: "#b91c1c", border: "#fecaca", accent: "#ef4444" },
   Facebook: { bg: "#ede9fe", color: "#6d28d9", border: "#ddd6fe", accent: "#8b5cf6" },
+  Lieferando: { bg: "#fff7ed", color: "#c2410c", border: "#fed7aa", accent: "#f97316" },
+  Foodora: { bg: "#fce4ec", color: "#c2185b", border: "#f8bbd0", accent: "#e91e63" },
+};
+const card: React.CSSProperties = {
+  backgroundColor: "#ffffff", borderRadius: 16, padding: 28,
+  border: "1px solid #e8edf3", boxShadow: "0 1px 8px rgba(0,0,0,0.04)",
 };
 
-const AVATAR_COLORS = [
-  { bg: "#ede9fe", color: "#7c3aed" },
-  { bg: "#fce7f3", color: "#be185d" },
-  { bg: "#dcfce7", color: "#15803d" },
-  { bg: "#dbeafe", color: "#1d4ed8" },
-  { bg: "#fef3c7", color: "#b45309" },
-  { bg: "#fee2e2", color: "#b91c1c" },
+/* ─── NAV STRUCTURE (5 items) ─── */
+type NavItem = { id: Section; icon: string; label: string };
+const NAV_ITEMS: NavItem[] = [
+  { id: "home", icon: "🏠", label: "Übersicht" },
+  { id: "reviews", icon: "⭐", label: "Bewertungen" },
+  { id: "akquise", icon: "📱", label: "Akquise" },
+  { id: "markt", icon: "🔍", label: "Markt-Check" },
+  { id: "settings", icon: "⚙️", label: "Einstellungen" },
 ];
 
-function getAvatarColor(name: string) {
-  return AVATAR_COLORS[name.charCodeAt(0) % AVATAR_COLORS.length];
-}
+const SECTION_META: Record<Section, { title: string; subtitle: string }> = {
+  home: { title: "Übersicht", subtitle: "Offene Bewertungen & deine Metriken — was muss ich jetzt tun?" },
+  reviews: { title: "Bewertungen", subtitle: "Alle Bewertungen managen, filtern & antworten" },
+  akquise: { title: "Akquise", subtitle: "QR-Codes, Einladungen, Funnel & Print-Assets — Bewertungen generieren" },
+  markt: { title: "Markt-Vergleich", subtitle: "Konkurrenz checken, deine Trends, Lieferplattformen" },
+  settings: { title: "Einstellungen", subtitle: "Betriebsprofil, Templates, Widget-Integration" },
+};
 
-function InitialAvatar({ name, size = 36 }: { name: string; size?: number }) {
+/* ─── HELPERS ─── */
+function formatDate(d: string) {
+  return new Date(d).toLocaleDateString("de-AT", { day: "2-digit", month: "short", year: "numeric" });
+}
+const AVATAR_COLORS = [
+  { bg: "#ede9fe", color: "#7c3aed" }, { bg: "#fce7f3", color: "#be185d" },
+  { bg: "#dcfce7", color: "#15803d" }, { bg: "#dbeafe", color: "#1d4ed8" },
+  { bg: "#fef3c7", color: "#b45309" }, { bg: "#fee2e2", color: "#b91c1c" },
+];
+function getAvatarColor(name: string) { return AVATAR_COLORS[name.charCodeAt(0) % AVATAR_COLORS.length]; }
+
+/* ─── SMALL COMPONENTS ─── */
+function Avatar({ name, size = 36 }: { name: string; size?: number }) {
   const c = getAvatarColor(name);
   return (
-    <div style={{
-      width: size, height: size, borderRadius: "50%", backgroundColor: c.bg,
-      display: "flex", alignItems: "center", justifyContent: "center",
-      fontSize: size * 0.38, fontWeight: 700, color: c.color, flexShrink: 0,
-    }}>
+    <div style={{ width: size, height: size, borderRadius: "50%", backgroundColor: c.bg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: size * 0.38, fontWeight: 700, color: c.color, flexShrink: 0 }}>
       {name.charAt(0).toUpperCase()}
     </div>
   );
 }
 
-function StarRating({ rating, size = 13 }: { rating: number; size?: number }) {
+function Stars({ rating, size = 13 }: { rating: number; size?: number }) {
   return (
     <span style={{ fontSize: size, letterSpacing: 1 }}>
-      {[1, 2, 3, 4, 5].map((s) => (
-        <span key={s} style={{ color: s <= rating ? "#f59e0b" : "#e2e8f0" }}>★</span>
-      ))}
+      {[1,2,3,4,5].map((s) => <span key={s} style={{ color: s <= rating ? "#f59e0b" : "#e2e8f0" }}>★</span>)}
     </span>
   );
 }
 
-function formatDate(d: string) {
-  return new Date(d).toLocaleDateString("de-AT", { day: "2-digit", month: "short", year: "numeric" });
-}
-
-/* ─── SIDEBAR NAV ITEM ─── */
-function SidebarNavItem({
-  icon, label, badge, isActive, onClick,
-}: { icon: string; label: string; badge?: number; isActive: boolean; onClick: () => void }) {
-  const [hovered, setHovered] = useState(false);
+function SubTabBar({ tabs, active, onChange }: { tabs: { id: string; label: string }[]; active: string; onChange: (id: string) => void }) {
   return (
-    <button
-      onClick={onClick}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        display: "flex", alignItems: "center", gap: 12, padding: "11px 14px",
-        borderRadius: 10, border: "none",
-        backgroundColor: isActive ? "#4338ca" : hovered ? "rgba(255,255,255,0.07)" : "transparent",
-        cursor: "pointer", textAlign: "left", width: "100%", fontFamily: "inherit",
-        transition: "background-color 0.15s",
-      }}
-    >
-      <span style={{ fontSize: 18, width: 22, textAlign: "center", flexShrink: 0 }}>{icon}</span>
-      <span style={{ fontSize: 14, fontWeight: isActive ? 700 : 500, color: isActive ? "#ffffff" : "rgba(255,255,255,0.65)", flex: 1 }}>
-        {label}
-      </span>
-      {badge != null && badge > 0 && (
-        <span style={{ backgroundColor: "#f97316", color: "#fff", fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 999 }}>
-          {badge}
-        </span>
-      )}
-    </button>
+    <div style={{ display: "flex", gap: 4, marginBottom: 24, backgroundColor: "#f1f5f9", borderRadius: 12, padding: 4, flexWrap: "wrap" }}>
+      {tabs.map((t) => (
+        <button key={t.id} onClick={() => onChange(t.id)} style={{
+          padding: "8px 16px", borderRadius: 9, border: "none",
+          backgroundColor: active === t.id ? "#ffffff" : "transparent",
+          color: active === t.id ? "#0f172a" : "#64748b",
+          fontSize: 13, fontWeight: active === t.id ? 700 : 500,
+          cursor: "pointer", fontFamily: "inherit",
+          boxShadow: active === t.id ? "0 1px 4px rgba(0,0,0,0.08)" : "none",
+          transition: "all 0.15s",
+        }}>
+          {t.label}
+        </button>
+      ))}
+    </div>
   );
 }
 
+/* ─── DELIVERY PLATFORM COLORS (Austria-relevant) ─── */
+const DELIVERY_COLORS: Record<string, { bg: string; color: string; icon: string }> = {
+  "Lieferando.at": { bg: "#fff3e0", color: "#e65100", icon: "🟠" },
+  "Uber Eats": { bg: "#e8f5e9", color: "#1b5e20", icon: "🟢" },
+  "Wolt": { bg: "#e3f2fd", color: "#0d47a1", icon: "🔵" },
+  "Foodora": { bg: "#fce4ec", color: "#c2185b", icon: "🍕" },
+};
+
 /* ─── MAIN COMPONENT ─── */
-export default function DashboardClient({ user, initialReviews, hasBusinesses = true }: { user: User; initialReviews: Review[]; hasBusinesses?: boolean }) {
+export default function DashboardClient({ user, initialReviews, hasBusinesses = true, businessProfile }: {
+  user: User; initialReviews: Review[]; hasBusinesses?: boolean; businessProfile?: BusinessProfile | null;
+}) {
   const router = useRouter();
   const [reviews, setReviews] = useState<Review[]>(initialReviews);
-  const [activeSection, setActiveSection] = useState<Section>("reviews");
-  const [activeTab, setActiveTab] = useState<"all" | "responded" | "pending">("all");
+  const [activeSection, setActiveSection] = useState<Section>("home");
   const [showAddModal, setShowAddModal] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [aiReply, setAiReply] = useState<{ reviewId: string; text: string; style: string } | null>(null);
+  const [dismissedAlerts, setDismissedAlerts] = useState<Set<string>>(new Set());
+  const [demoLoading, setDemoLoading] = useState(false);
 
-  const avgRating = reviews.length
-    ? (reviews.reduce((s, r) => s + r.rating, 0) / reviews.length).toFixed(1) : "—";
+  // Sub-tab states
+  const [akquiseTab, setAkquiseTab] = useState("qrstudio");
+  const [marktTab, setMarktTab] = useState("lieferplattformen");
+  const [settingsTab, setSettingsTab] = useState("settings");
+
+  // Delivery platform auto-check
+  const [deliveryRatings, setDeliveryRatings] = useState<DeliveryRating[]>([]);
+  const [deliveryLoading, setDeliveryLoading] = useState(false);
+  const [deliveryChecked, setDeliveryChecked] = useState(false);
+
+  const avgRating = reviews.length ? (reviews.reduce((s, r) => s + r.rating, 0) / reviews.length).toFixed(1) : "—";
   const pendingCount = reviews.filter((r) => !r.responded).length;
-  const fiveStarCount = reviews.filter((r) => r.rating === 5).length;
+  const responseRate = reviews.length ? Math.round((reviews.filter(r => r.responded).length / reviews.length) * 100) : 0;
+  const thisMonthCount = reviews.filter((r) => {
+    const d = new Date(r.created_at); const now = new Date();
+    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+  }).length;
 
-  const filteredReviews = reviews.filter((r) => {
-    if (activeTab === "responded") return r.responded;
-    if (activeTab === "pending") return !r.responded;
-    return true;
-  });
+  // Auto-check delivery platforms on mount (max 1x per 24h)
+  useEffect(() => {
+    if (businessProfile?.name && !deliveryChecked) {
+      const lastCheckKey = `delivery_check_${user.id}`;
+      const lastCheck = localStorage.getItem(lastCheckKey);
+      const now = Date.now();
+      const oneDayMs = 24 * 60 * 60 * 1000;
 
-  const platformData = (["Google", "Tripadvisor", "Booking.com", "Yelp", "Facebook"] as const)
-    .map((p) => ({ name: p, count: reviews.filter((r) => r.platform === p).length, ...PLATFORM_COLORS[p] }))
-    .filter((p) => p.count > 0)
-    .sort((a, b) => b.count - a.count);
-  const maxPlatformCount = Math.max(...platformData.map((p) => p.count), 1);
+      // Only check if not checked in last 24 hours
+      if (!lastCheck || now - parseInt(lastCheck) > oneDayMs) {
+        setDeliveryLoading(true);
+        setDeliveryChecked(true);
+        fetch("/api/check-delivery-ratings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            businessName: businessProfile.name,
+            city: businessProfile.address || "",
+            userId: user.id,
+          }),
+        })
+          .then((r) => r.json())
+          .then((data) => {
+            if (data.results) {
+              setDeliveryRatings(data.results);
+              localStorage.setItem(lastCheckKey, String(now));
+            }
+          })
+          .catch(() => {})
+          .finally(() => setDeliveryLoading(false));
+      } else {
+        setDeliveryChecked(true);
+      }
+    }
+  }, [businessProfile?.name, businessProfile?.address, user.id, deliveryChecked]);
 
   async function handleLogout() {
     setLoggingOut(true);
@@ -138,7 +209,7 @@ export default function DashboardClient({ user, initialReviews, hasBusinesses = 
   async function handleMarkResponded(id: string) {
     const supabase = createClient();
     const { error } = await supabase.from("reviews").update({ responded: true }).eq("id", id);
-    if (!error) setReviews((prev) => prev.map((r) => (r.id === id ? { ...r, responded: true } : r)));
+    if (!error) setReviews((prev) => prev.map((r) => r.id === id ? { ...r, responded: true } : r));
   }
 
   async function handleDeleteReview(id: string) {
@@ -153,310 +224,531 @@ export default function DashboardClient({ user, initialReviews, hasBusinesses = 
     const res = await fetch("/api/ai-reply", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ reviewContent: review.content, authorName: review.author_name, rating: review.rating, platform: review.platform, style, businessName: user.name }),
+      body: JSON.stringify({ reviewContent: review.content, authorName: review.author_name, rating: review.rating, platform: review.platform, style, businessName: businessProfile?.name || user.name }),
     });
     const data = await res.json();
     setAiReply({ reviewId: review.id, text: data.reply || "Fehler beim Generieren.", style });
   }
 
+  const [reportSending, setReportSending] = useState(false);
+  const [reportSent, setReportSent] = useState(false);
+
+  async function handleSendWeeklyReport() {
+    setReportSending(true);
+    try {
+      await fetch("/api/weekly-report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ businessName: user.name, email: user.email }),
+      });
+      setReportSent(true);
+      setTimeout(() => setReportSent(false), 4000);
+    } finally {
+      setReportSending(false);
+    }
+  }
+
+  const meta = SECTION_META[activeSection];
+
+  // Platform breakdown for home
+  const platformBreakdown = reviews.reduce((acc, r) => {
+    acc[r.platform] = (acc[r.platform] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+
+  const recentReviews = [...reviews].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 5);
+  const lowRatingCount = reviews.filter(r => r.rating <= 2).length;
+
   return (
     <div style={{ display: "flex", minHeight: "100vh", backgroundColor: "#f1f5f9", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, sans-serif" }}>
 
-      {/* ── SIDEBAR ── */}
-      <aside style={{
-        width: 240, backgroundColor: "#1e1b4b", position: "fixed", top: 0, left: 0,
-        height: "100vh", display: "flex", flexDirection: "column", zIndex: 100,
-        boxShadow: "4px 0 32px rgba(0,0,0,0.15)",
-      }}>
-        {/* Logo */}
-        <div style={{ padding: "28px 24px 20px" }}>
-          <div style={{ fontSize: 22, fontWeight: 800, color: "#ffffff", letterSpacing: "-0.5px" }}>
-            Review<span style={{ color: "#a5b4fc" }}>Boost</span>
-          </div>
-          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginTop: 4, fontWeight: 500, letterSpacing: "0.4px", textTransform: "uppercase" }}>
-            Bewertungsmanagement
-          </div>
+      {/* ── SIDEBAR (kompakt) ── */}
+      <aside style={{ width: 200, backgroundColor: "#1e1b4b", position: "fixed", top: 0, left: 0, height: "100vh", display: "flex", flexDirection: "column", zIndex: 100, boxShadow: "2px 0 20px rgba(0,0,0,0.12)" }}>
+        {/* Logo / Betriebsprofil */}
+        <div style={{ padding: "18px 14px 14px" }}>
+          {businessProfile?.logoUrl ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <img src={businessProfile.logoUrl} alt={businessProfile.name} style={{ width: 36, height: 36, borderRadius: 10, objectFit: "cover", border: "2px solid rgba(255,255,255,0.15)", flexShrink: 0 }} />
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: "#ffffff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{businessProfile.name}</div>
+                <div style={{ fontSize: 9, color: "rgba(255,255,255,0.3)", marginTop: 1 }}>ReviewBoost</div>
+              </div>
+            </div>
+          ) : businessProfile ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ width: 36, height: 36, borderRadius: 10, flexShrink: 0, background: businessProfile.brandColor ? `linear-gradient(135deg, ${businessProfile.brandColor}, ${businessProfile.brandColor}aa)` : "linear-gradient(135deg, #6366f1, #8b5cf6)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, fontWeight: 800, color: "#fff", border: "2px solid rgba(255,255,255,0.15)" }}>
+                {businessProfile.name.charAt(0).toUpperCase()}
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: "#ffffff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{businessProfile.name}</div>
+                <div style={{ fontSize: 9, color: "rgba(255,255,255,0.3)", marginTop: 1 }}>ReviewBoost</div>
+              </div>
+            </div>
+          ) : (
+            <div style={{ fontSize: 18, fontWeight: 800, color: "#ffffff", letterSpacing: "-0.5px" }}>
+              Review<span style={{ color: "#a5b4fc" }}>Boost</span>
+            </div>
+          )}
         </div>
 
-        <div style={{ height: 1, backgroundColor: "rgba(255,255,255,0.08)", margin: "0 16px" }} />
-
-        {/* Nav */}
-        <nav style={{ flex: 1, padding: "16px 12px", display: "flex", flexDirection: "column", gap: 2 }}>
-          <SidebarNavItem icon="⭐" label="Bewertungen" badge={pendingCount} isActive={activeSection === "reviews"} onClick={() => setActiveSection("reviews")} />
-          <SidebarNavItem icon="✉️" label="Einladung senden" isActive={activeSection === "invite"} onClick={() => setActiveSection("invite")} />
-          <SidebarNavItem icon="📱" label="QR & Links" isActive={activeSection === "qr"} onClick={() => setActiveSection("qr")} />
-
-          <div style={{ height: 1, backgroundColor: "rgba(255,255,255,0.07)", margin: "12px 4px" }} />
-
-          <button
-            onClick={() => setShowAddModal(true)}
-            style={{
-              display: "flex", alignItems: "center", gap: 12, padding: "11px 14px",
-              borderRadius: 10, border: "1px solid rgba(255,255,255,0.12)",
-              backgroundColor: "rgba(255,255,255,0.06)", cursor: "pointer",
-              textAlign: "left", width: "100%", fontFamily: "inherit",
-            }}
-          >
-            <span style={{ fontSize: 18, width: 22, textAlign: "center" }}>➕</span>
-            <span style={{ fontSize: 14, fontWeight: 500, color: "rgba(255,255,255,0.6)" }}>Bewertung erfassen</span>
-          </button>
+        {/* Nav — flat list */}
+        <nav style={{ flex: 1, padding: "6px 8px", display: "flex", flexDirection: "column", gap: 2 }}>
+          {NAV_ITEMS.map((item) => {
+            const isActive = activeSection === item.id;
+            return (
+              <SidebarNavItem
+                key={item.id}
+                icon={item.icon}
+                label={item.label}
+                isActive={isActive}
+                badge={item.id === "reviews" ? pendingCount : undefined}
+                onClick={() => setActiveSection(item.id)}
+              />
+            );
+          })}
         </nav>
 
-        {/* User + Logout */}
-        <div style={{ padding: "12px 14px 20px", borderTop: "1px solid rgba(255,255,255,0.08)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 10px", borderRadius: 10, backgroundColor: "rgba(255,255,255,0.05)", marginBottom: 10 }}>
-            <InitialAvatar name={user.name} size={32} />
+        {/* User Footer */}
+        <div style={{ padding: "10px 10px 14px", borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 9px", borderRadius: 9, backgroundColor: "rgba(255,255,255,0.04)", marginBottom: 6 }}>
+            <Avatar name={user.name} size={26} />
             <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{ fontSize: 13, fontWeight: 600, color: "#ffffff", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.name}</p>
-              <p style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.email}</p>
+              <p style={{ fontSize: 11, fontWeight: 600, color: "#fff", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.name}</p>
+              <p style={{ fontSize: 9, color: "rgba(255,255,255,0.3)", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.email}</p>
             </div>
           </div>
-          <button
-            onClick={handleLogout}
-            disabled={loggingOut}
-            style={{
-              width: "100%", padding: "9px", borderRadius: 8,
-              border: "1px solid rgba(255,255,255,0.1)", backgroundColor: "transparent",
-              color: "rgba(255,255,255,0.5)", fontSize: 13, fontWeight: 500,
-              cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s",
-            }}
-          >
-            {loggingOut ? "..." : "🚪 Abmelden"}
+          <button onClick={handleLogout} disabled={loggingOut} style={{ width: "100%", padding: "7px", borderRadius: 7, border: "1px solid rgba(255,255,255,0.1)", backgroundColor: "transparent", color: "rgba(255,255,255,0.4)", fontSize: 11, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" }}>
+            {loggingOut ? "..." : "Abmelden"}
           </button>
         </div>
       </aside>
 
-      {/* ── MAIN CONTENT ── */}
-      <div style={{ flex: 1, marginLeft: 240, display: "flex", flexDirection: "column", minHeight: "100vh" }}>
+      {/* ── MAIN ── */}
+      <div style={{ flex: 1, marginLeft: 200, display: "flex", flexDirection: "column", minHeight: "100vh" }}>
 
-        {/* Page Header */}
-        <div style={{ backgroundColor: "#ffffff", borderBottom: "1px solid #e8edf3", padding: "28px 36px 24px" }}>
-          <div style={{ marginBottom: 24 }}>
-            <h1 style={{ fontSize: 26, fontWeight: 800, color: "#0f172a", margin: "0 0 4px", letterSpacing: "-0.5px" }}>
-              Guten Tag, {user.name.split(" ")[0]}! 👋
-            </h1>
-            <p style={{ fontSize: 13, color: "#94a3b8", margin: 0 }}>
-              {new Date().toLocaleDateString("de-AT", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
-            </p>
+        {/* Top Bar */}
+        <header style={{ backgroundColor: "#ffffff", borderBottom: "1px solid #e8edf3", padding: "0 28px", height: 56, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexShrink: 0 }}>
+          <div>
+            <h1 style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", margin: 0 }}>{meta.title}</h1>
+            <p style={{ fontSize: 11, color: "#94a3b8", margin: 0 }}>{meta.subtitle}</p>
           </div>
-
-          {/* Stats Row */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
             {[
-              { label: "Ø Bewertung", value: avgRating, sub: "Alle Plattformen", icon: "⭐", accent: "#f59e0b", bg: "#fffbeb" },
-              { label: "Gesamt", value: reviews.length, sub: "Bewertungen erfasst", icon: "📊", accent: "#6366f1", bg: "#eef2ff" },
-              { label: "Ausstehend", value: pendingCount, sub: "Warten auf Antwort", icon: "🔔", accent: "#f97316", bg: "#fff7ed" },
-              {
-                label: "5-Sterne", value: fiveStarCount,
-                sub: reviews.length > 0 ? `${Math.round(fiveStarCount / reviews.length * 100)}% aller Bewertungen` : "0%",
-                icon: "🏆", accent: "#22c55e", bg: "#f0fdf4",
-              },
-            ].map((stat) => (
-              <div key={stat.label} style={{
-                backgroundColor: "#f8fafc", borderRadius: 14, padding: "16px 18px",
-                border: "1px solid #f1f5f9", display: "flex", alignItems: "center", gap: 14,
-              }}>
-                <div style={{
-                  width: 44, height: 44, borderRadius: 12, backgroundColor: stat.bg,
-                  display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0,
-                }}>
-                  {stat.icon}
-                </div>
-                <div>
-                  <div style={{ fontSize: 26, fontWeight: 800, color: "#0f172a", letterSpacing: "-1px", lineHeight: 1 }}>{stat.value}</div>
-                  <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 3 }}>{stat.sub}</div>
-                </div>
+              { label: `⭐ ${avgRating}`, color: "#b45309", bg: "#fef3c7" },
+              { label: `${reviews.length} Bew.`, color: "#4338ca", bg: "#eef2ff" },
+              { label: `${pendingCount} offen`, color: pendingCount > 0 ? "#dc2626" : "#15803d", bg: pendingCount > 0 ? "#fef2f2" : "#f0fdf4" },
+            ].map((chip) => (
+              <div key={chip.label} style={{ padding: "3px 9px", borderRadius: 999, backgroundColor: chip.bg, fontSize: 11, fontWeight: 600, color: chip.color, whiteSpace: "nowrap" }}>
+                {chip.label}
               </div>
             ))}
+            <button
+              onClick={handleSendWeeklyReport}
+              disabled={reportSending || reportSent}
+              title="Wochenbericht per E-Mail senden"
+              style={{
+                padding: "5px 10px", borderRadius: 8, border: "1.5px solid #e2e8f0",
+                backgroundColor: reportSent ? "#f0fdf4" : "#ffffff",
+                color: reportSent ? "#15803d" : "#64748b",
+                fontSize: 11, fontWeight: 600, cursor: reportSending ? "wait" : "pointer",
+                fontFamily: "inherit", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 4,
+              }}
+            >
+              {reportSent ? "✓ Gesendet" : reportSending ? "⏳..." : "📊 Bericht"}
+            </button>
           </div>
+        </header>
 
-          {/* Platform Distribution */}
-          {platformData.length > 0 && (
-            <div style={{ marginTop: 18, display: "flex", gap: 20, flexWrap: "wrap", alignItems: "center" }}>
-              <span style={{ fontSize: 12, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.4px" }}>Plattformen:</span>
-              {platformData.map((p) => (
-                <div key={p.name} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <div style={{
-                    height: 6, borderRadius: 999,
-                    width: Math.max(32, Math.round((p.count / maxPlatformCount) * 80)) + "px",
-                    backgroundColor: p.accent,
-                  }} />
-                  <span style={{ fontSize: 12, color: "#64748b", fontWeight: 500 }}>{p.name} <span style={{ color: "#94a3b8" }}>({p.count})</span></span>
-                </div>
-              ))}
+        {/* Alerts */}
+        {reviews.filter((r) => {
+          if (dismissedAlerts.has(r.id) || r.responded || r.rating > 2) return false;
+          return (Date.now() - new Date(r.created_at).getTime()) / 86400000 <= 7;
+        }).slice(0, 1).map((r) => (
+          <div key={r.id} style={{ margin: "12px 28px 0", padding: "10px 16px", backgroundColor: "#fef2f2", border: "1.5px solid #fecaca", borderRadius: 12, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 16 }}>🚨</span>
+            <div style={{ flex: 1, minWidth: 140 }}>
+              <p style={{ fontSize: 12, fontWeight: 700, color: "#991b1b", margin: "0 0 1px" }}>{r.rating}★ von {r.author_name}</p>
+              <p style={{ fontSize: 11, color: "#b91c1c", margin: 0 }}>{r.content.substring(0, 80)}{r.content.length > 80 ? "…" : ""}</p>
             </div>
-          )}
-        </div>
+            <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
+              <button onClick={() => setActiveSection("reviews")} style={{ padding: "5px 10px", borderRadius: 7, border: "none", backgroundColor: "#dc2626", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Antworten</button>
+              <button onClick={() => setDismissedAlerts((p) => new Set([...p, r.id]))} style={{ padding: "5px 7px", borderRadius: 7, border: "1px solid #fecaca", backgroundColor: "#fff", color: "#dc2626", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>✕</button>
+            </div>
+          </div>
+        ))}
 
-        {/* Setup Banner — only shown when no business is registered yet */}
         {!hasBusinesses && (
-          <div style={{ margin: "24px 36px 0", padding: "20px 24px", backgroundColor: "#fffbeb", border: "1.5px solid #fde68a", borderRadius: 14, display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-            <span style={{ fontSize: 28 }}>🏪</span>
-            <div style={{ flex: 1, minWidth: 200 }}>
-              <p style={{ fontSize: 15, fontWeight: 700, color: "#92400e", margin: "0 0 3px" }}>Kein Betrieb registriert</p>
-              <p style={{ fontSize: 13, color: "#b45309", margin: 0 }}>Füge deinen Betrieb hinzu, um Bewertungseinladungen zu versenden und QR-Codes zu erstellen.</p>
+          <div style={{ margin: "12px 28px 0", padding: "14px 18px", backgroundColor: "#fffbeb", border: "1.5px solid #fde68a", borderRadius: 12, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 20 }}>🏪</span>
+            <div style={{ flex: 1 }}>
+              <p style={{ fontSize: 13, fontWeight: 700, color: "#92400e", margin: "0 0 2px" }}>Kein Betrieb registriert</p>
+              <p style={{ fontSize: 12, color: "#b45309", margin: 0 }}>Füge deinen Betrieb hinzu um loszulegen.</p>
             </div>
-            <a href="/onboarding" style={{ padding: "10px 20px", backgroundColor: "#f59e0b", color: "#ffffff", textDecoration: "none", borderRadius: 10, fontSize: 14, fontWeight: 700, whiteSpace: "nowrap" }}>
-              Betrieb einrichten →
-            </a>
+            <a href="/onboarding" style={{ padding: "8px 16px", backgroundColor: "#f59e0b", color: "#fff", textDecoration: "none", borderRadius: 9, fontSize: 12, fontWeight: 700 }}>Betrieb einrichten →</a>
           </div>
         )}
 
-        {/* Section Content */}
-        <div style={{ flex: 1, padding: "28px 36px" }}>
+        {hasBusinesses && initialReviews.length === 0 && (
+          <div style={{ margin: "12px 28px 0", padding: "14px 18px", backgroundColor: "#f0fdf4", border: "1.5px solid #bbf7d0", borderRadius: 12, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 20 }}>🌱</span>
+            <p style={{ fontSize: 13, color: "#166534", margin: 0, flex: 1 }}>Noch keine Bewertungen? Lade Demo-Daten zum Testen.</p>
+            <button
+              disabled={demoLoading}
+              onClick={async () => {
+                setDemoLoading(true);
+                try {
+                  await fetch("/api/seed-demo", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ userId: user.id }),
+                  });
+                  window.location.reload();
+                } catch {
+                  setDemoLoading(false);
+                }
+              }}
+              style={{ padding: "8px 16px", backgroundColor: "#22c55e", color: "#fff", border: "none", borderRadius: 9, fontSize: 12, fontWeight: 700, cursor: demoLoading ? "wait" : "pointer", fontFamily: "inherit", opacity: demoLoading ? 0.7 : 1, whiteSpace: "nowrap" }}
+            >
+              {demoLoading ? "Lädt..." : "Demo-Daten laden"}
+            </button>
+          </div>
+        )}
+
+        {/* Content */}
+        <main style={{ flex: 1, padding: "24px 28px" }}>
+
+          {/* ══════ HOME / ÜBERSICHT: "Was muss ich JETZT tun?" ══════ */}
+          {activeSection === "home" && (
+            <div style={{ maxWidth: 1100 }}>
+              {/* Action Priority: Offene Bewertungen top */}
+              {pendingCount > 0 && (
+                <div style={{ ...card, padding: 20, backgroundColor: "#fef2f2", border: "2px solid #fecaca", marginBottom: 20 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div>
+                      <h3 style={{ fontSize: 15, fontWeight: 800, color: "#991b1b", margin: "0 0 4px" }}>🔴 {pendingCount} {pendingCount === 1 ? "Bewertung wartet" : "Bewertungen warten"} auf Antwort</h3>
+                      <p style={{ fontSize: 12, color: "#b91c1c", margin: 0 }}>Beantworte jetzt, um deine Response-Rate zu verbessern und Kunden zu binden.</p>
+                    </div>
+                    <button onClick={() => setActiveSection("reviews")} style={{ padding: "9px 18px", backgroundColor: "#dc2626", color: "#fff", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>→ Zur Inbox</button>
+                  </div>
+                </div>
+              )}
+
+              {/* Meine Metriken — 3 KPIs */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginBottom: 20 }}>
+                {[
+                  { label: "Ø Bewertung", value: avgRating, icon: "⭐", bg: "#fef3c7", color: "#b45309", detail: "Von allen Plattformen" },
+                  { label: "Antwortrate", value: `${responseRate}%`, icon: "✅", bg: responseRate >= 80 ? "#f0fdf4" : responseRate >= 50 ? "#fef3c7" : "#fef2f2", color: responseRate >= 80 ? "#15803d" : responseRate >= 50 ? "#b45309" : "#dc2626", detail: `${reviews.filter(r => r.responded).length} von ${reviews.length} beantwortet` },
+                  { label: "Diesen Monat", value: String(thisMonthCount), icon: "📅", bg: "#eef2ff", color: "#4338ca", detail: `${reviews.length} gesamt` },
+                ].map((kpi) => (
+                  <div key={kpi.label} style={{ ...card, padding: 18 }}>
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+                      <div style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: kpi.bg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>{kpi.icon}</div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 20, fontWeight: 800, color: kpi.color, letterSpacing: "-0.5px" }}>{kpi.value}</div>
+                        <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>{kpi.label}</div>
+                        <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 4 }}>{kpi.detail}</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
+                {/* Recent pending reviews — was zu tun ist */}
+                <div style={card}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                    <h3 style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", margin: 0 }}>⏳ Letzte unbeantwortet</h3>
+                    <button onClick={() => setActiveSection("reviews")} style={{ fontSize: 10, color: "#6366f1", fontWeight: 600, background: "none", border: "none", cursor: "pointer", fontFamily: "inherit" }}>Alle</button>
+                  </div>
+                  {recentReviews.filter(r => !r.responded).length === 0 ? (
+                    <p style={{ fontSize: 12, color: "#15803d", textAlign: "center", padding: 16, backgroundColor: "#f0fdf4", borderRadius: 8 }}>✓ Alle Bewertungen beantwortet!</p>
+                  ) : recentReviews.filter(r => !r.responded).slice(0, 3).map((r) => (
+                    <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 0", borderBottom: "1px solid #f1f5f9" }}>
+                      <Avatar name={r.author_name} size={28} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                          <span style={{ fontSize: 11, fontWeight: 600, color: r.rating <= 2 ? "#dc2626" : "#0f172a" }}>{r.author_name}</span>
+                          <Stars rating={r.rating} size={9} />
+                        </div>
+                        <p style={{ fontSize: 10, color: "#64748b", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.content.substring(0, 60)}</p>
+                      </div>
+                      <span style={{ fontSize: 9, color: "#94a3b8", flexShrink: 0 }}>{formatDate(r.created_at)}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Schnelle Aktionen */}
+                <div style={card}>
+                  <h3 style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", margin: "0 0 12px" }}>⚡ Schnelle Aktionen</h3>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                    {[
+                      { emoji: "📱", label: "QR-Code erstellen", desc: "Für Tisch-Rezensionen", section: "akquise" as Section },
+                      { emoji: "✉️", label: "Kunden einladen", desc: "Per Email/SMS", section: "akquise" as Section },
+                      { emoji: "➕", label: "Bewertung eintragen", desc: "Manuell hinzufügen", section: null },
+                    ].map((a) => (
+                      <button
+                        key={a.label}
+                        onClick={() => a.section ? setActiveSection(a.section) : setShowAddModal(true)}
+                        style={{ padding: "8px 10px", display: "flex", alignItems: "center", gap: 8, backgroundColor: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, cursor: "pointer", fontFamily: "inherit", fontSize: 11, color: "#374151", fontWeight: 500, textAlign: "left", transition: "all 0.15s" }}
+                        onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = "#eef2ff"; e.currentTarget.style.borderColor = "#6366f1"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "#f8fafc"; e.currentTarget.style.borderColor = "#e2e8f0"; }}
+                      >
+                        <span style={{ fontSize: 14 }}>{a.emoji}</span>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 600, fontSize: 11 }}>{a.label}</div>
+                          <div style={{ fontSize: 9, color: "#94a3b8" }}>{a.desc}</div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Plattform-Verteilung (informativ) */}
+              <div style={{ ...card, marginBottom: 14 }}>
+                <h3 style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", margin: "0 0 14px" }}>📊 Wo kommen deine Bewertungen her?</h3>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10 }}>
+                  {Object.entries(platformBreakdown).sort((a, b) => b[1] - a[1]).map(([p, count]) => {
+                    const pct = reviews.length ? Math.round((count / reviews.length) * 100) : 0;
+                    const colors = PLATFORM_COLORS[p] || { bg: "#f1f5f9", color: "#475569", accent: "#94a3b8" };
+                    return (
+                      <div key={p} style={{ padding: 12, backgroundColor: colors.bg, borderRadius: 10, textAlign: "center" }}>
+                        <div style={{ fontSize: 22, marginBottom: 4 }}>⭐</div>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: colors.color, marginBottom: 2 }}>{p}</div>
+                        <div style={{ fontSize: 18, fontWeight: 800, color: colors.color }}>{count}</div>
+                        <div style={{ fontSize: 9, color: colors.color, opacity: 0.6 }}>{pct}%</div>
+                      </div>
+                    );
+                  })}
+                  {Object.keys(platformBreakdown).length === 0 && (
+                    <p style={{ fontSize: 12, color: "#94a3b8", textAlign: "center", padding: 20, gridColumn: "1/-1" }}>Noch keine Bewertungen</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Info: Go to Markt-Radar for competition */}
+              <div style={{ ...card, backgroundColor: "#eef2ff", border: "1px solid #c7d2fe" }}>
+                <p style={{ fontSize: 12, color: "#4338ca", margin: 0 }}>
+                  <strong>💡 Markt-Radar:</strong> Wie schneidest du gegen die Konkurrenz ab? Schau in den Markt-Radar Tab, um Lieferplattformen zu checken und Konkurrenten zu vergleichen.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* ══════ BEWERTUNGEN ══════ */}
           {activeSection === "reviews" && (
-            <ReviewsSection
+            <ReviewManagementSection
               reviews={reviews}
-              filteredReviews={filteredReviews}
-              activeTab={activeTab}
-              setActiveTab={setActiveTab}
-              pendingCount={pendingCount}
-              aiReply={aiReply}
-              setAiReply={setAiReply}
               onMarkResponded={handleMarkResponded}
               onDelete={handleDeleteReview}
               onAiReply={handleAiReply}
+              aiReply={aiReply}
+              setAiReply={setAiReply}
             />
           )}
-          {activeSection === "invite" && <InviteSection businessName={user.name} />}
-          {activeSection === "qr" && <QRSection businessName={user.name} />}
-        </div>
+
+          {/* ══════ AKQUISE (sub-tabs) ══════ */}
+          {activeSection === "akquise" && (
+            <div style={{ maxWidth: 960 }}>
+              <SubTabBar
+                tabs={[
+                  { id: "qrstudio", label: "📱 QR-Studio" },
+                  { id: "einladen", label: "✉️ Einladen" },
+                  { id: "funnel", label: "🛡️ Funnel" },
+                  { id: "print", label: "🖨️ Print-Assets" },
+                ]}
+                active={akquiseTab}
+                onChange={setAkquiseTab}
+              />
+              {akquiseTab === "qrstudio" && <QRStudioSection userId={user.id} businessName={user.name} />}
+              {akquiseTab === "einladen" && <EinladenSubSection businessName={user.name} />}
+              {akquiseTab === "funnel" && <FunnelSection userId={user.id} />}
+              {akquiseTab === "print" && <PrintAssetsSection businessName={user.name} userId={user.id} />}
+            </div>
+          )}
+
+          {/* ══════ MARKT-RADAR: "Wie sehe ich da aus?" (strategisch) ══════ */}
+          {activeSection === "markt" && (
+            <div style={{ maxWidth: 1100 }}>
+              <div style={{ marginBottom: 16 }}>
+                <p style={{ fontSize: 13, color: "#64748b", margin: 0 }}>Automatische Lieferplattform-Überwachung, Konkurrenz-Vergleich & Trends.</p>
+              </div>
+              <SubTabBar
+                tabs={[
+                  { id: "lieferplattformen", label: "🚴 Lieferplattformen (Automatisch)" },
+                  { id: "konkurrenz", label: "🔭 Konkurrenz-Vergleich" },
+                  { id: "analytics", label: "📊 Deine Trends" },
+                ]}
+                active={marktTab}
+                onChange={setMarktTab}
+              />
+              {marktTab === "lieferplattformen" && (
+                <DeliveryPlatformsPanel
+                  ratings={deliveryRatings}
+                  loading={deliveryLoading}
+                  businessName={businessProfile?.name || user.name}
+                  onRefresh={() => setDeliveryChecked(false)}
+                />
+              )}
+              {marktTab === "konkurrenz" && (
+                <KonkurrenzRadarSection
+                  businessName={user.name}
+                  myRating={reviews.length > 0 ? parseFloat((reviews.reduce((s, r) => s + r.rating, 0) / reviews.length).toFixed(1)) : 0}
+                  myReviewCount={reviews.length}
+                />
+              )}
+              {marktTab === "analytics" && <AnalyticsSection reviews={reviews} />}
+            </div>
+          )}
+
+          {/* ══════ EINSTELLUNGEN (sub-tabs) ══════ */}
+          {activeSection === "settings" && (
+            <div style={{ maxWidth: 960 }}>
+              <SubTabBar
+                tabs={[
+                  { id: "settings", label: "⚙️ Betrieb & Profil" },
+                  { id: "vorlagen", label: "📝 Vorlagen" },
+                  { id: "widget", label: "🌐 Widget" },
+                  { id: "strategie", label: "🎯 Strategie" },
+                ]}
+                active={settingsTab}
+                onChange={setSettingsTab}
+              />
+              {settingsTab === "settings" && <SettingsSection userId={user.id} userEmail={user.email} userName={user.name} />}
+              {settingsTab === "vorlagen" && <TemplatesSection userId={user.id} />}
+              {settingsTab === "widget" && <WidgetSection userId={user.id} businessName={user.name} />}
+              {settingsTab === "strategie" && <StrategieSection reviews={reviews} businessName={user.name} />}
+            </div>
+          )}
+
+        </main>
       </div>
 
       {showAddModal && (
-        <AddReviewModal userId={user.id} onClose={() => setShowAddModal(false)} onAdded={(r) => { setReviews((prev) => [r, ...prev]); setShowAddModal(false); }} />
+        <AddReviewModal userId={user.id} userEmail={user.email} businessName={user.name} onClose={() => setShowAddModal(false)} onAdded={(r) => { setReviews((prev) => [r, ...prev]); setShowAddModal(false); }} />
       )}
     </div>
   );
 }
 
-/* ─── REVIEWS SECTION ─── */
-function ReviewsSection({
-  reviews, filteredReviews, activeTab, setActiveTab, pendingCount, aiReply, setAiReply, onMarkResponded, onDelete, onAiReply,
-}: {
-  reviews: Review[]; filteredReviews: Review[]; activeTab: "all" | "responded" | "pending";
-  setActiveTab: (t: "all" | "responded" | "pending") => void; pendingCount: number;
-  aiReply: { reviewId: string; text: string; style: string } | null;
-  setAiReply: (v: { reviewId: string; text: string; style: string } | null) => void;
-  onMarkResponded: (id: string) => void; onDelete: (id: string) => void;
-  onAiReply: (review: Review, style: "personal" | "neutral") => void;
-}) {
+/* ─── SIDEBAR NAV ITEM ─── */
+function SidebarNavItem({ icon, label, badge, isActive, onClick }: { icon: string; label: string; badge?: number; isActive: boolean; onClick: () => void }) {
+  const [hov, setHov] = useState(false);
   return (
-    <div style={{ backgroundColor: "#ffffff", borderRadius: 16, border: "1px solid #e8edf3", boxShadow: "0 1px 8px rgba(0,0,0,0.04)", overflow: "hidden" }}>
-      {/* Tabs */}
-      <div style={{ display: "flex", borderBottom: "1px solid #f1f5f9", padding: "0 24px", gap: 4 }}>
-        {(["all", "pending", "responded"] as const).map((tab) => {
-          const labels = { all: `Alle (${reviews.length})`, pending: "Ausstehend", responded: "Beantwortet" };
-          const isActive = activeTab === tab;
-          return (
-            <button key={tab} onClick={() => setActiveTab(tab)} style={{
-              padding: "16px 16px 14px", border: "none",
-              borderBottom: isActive ? "2px solid #6366f1" : "2px solid transparent",
-              backgroundColor: "transparent", color: isActive ? "#6366f1" : "#64748b",
-              fontSize: 14, fontWeight: isActive ? 700 : 500, cursor: "pointer", fontFamily: "inherit",
-              display: "flex", alignItems: "center", gap: 8,
-            }}>
-              {labels[tab]}
-              {tab === "pending" && pendingCount > 0 && (
-                <span style={{ backgroundColor: "#f97316", color: "#fff", fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 999 }}>
-                  {pendingCount}
-                </span>
-              )}
-            </button>
-          );
-        })}
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
+      style={{
+        display: "flex", alignItems: "center", gap: 10, padding: "10px 12px",
+        borderRadius: 10, border: "none", width: "100%", textAlign: "left", fontFamily: "inherit",
+        backgroundColor: isActive ? "#4338ca" : hov ? "rgba(255,255,255,0.06)" : "transparent",
+        cursor: "pointer", transition: "background-color 0.12s",
+      }}
+    >
+      <span style={{ fontSize: 17, width: 22, textAlign: "center", flexShrink: 0 }}>{icon}</span>
+      <span style={{ fontSize: 13, fontWeight: isActive ? 700 : 500, color: isActive ? "#fff" : "rgba(255,255,255,0.6)", flex: 1 }}>{label}</span>
+      {badge != null && badge > 0 && (
+        <span style={{ backgroundColor: "#f97316", color: "#fff", fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 999, flexShrink: 0 }}>{badge}</span>
+      )}
+    </button>
+  );
+}
+
+/* ─── EINLADEN SUB-SECTION (combines invite+qr+kampagne) ─── */
+function EinladenSubSection({ businessName }: { businessName: string }) {
+  const [tab, setTab] = useState<"invite" | "qr" | "kampagne">("invite");
+  return (
+    <div>
+      <SubTabBar
+        tabs={[
+          { id: "invite", label: "✉️ Einzeln" },
+          { id: "qr", label: "📱 QR & Link" },
+          { id: "kampagne", label: "📣 Kampagne" },
+        ]}
+        active={tab}
+        onChange={(id) => setTab(id as typeof tab)}
+      />
+      {tab === "invite" && <InviteSection businessName={businessName} />}
+      {tab === "qr" && <QRSection businessName={businessName} />}
+      {tab === "kampagne" && <KampagnenSection businessName={businessName} />}
+    </div>
+  );
+}
+
+/* ─── DELIVERY PLATFORMS PANEL ─── */
+function DeliveryPlatformsPanel({ ratings, loading, businessName, onRefresh }: { ratings: DeliveryRating[]; loading: boolean; businessName: string; onRefresh: () => void }) {
+  return (
+    <div style={{ maxWidth: 900 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+        <div>
+          <h3 style={{ fontSize: 16, fontWeight: 700, color: "#0f172a", margin: "0 0 4px" }}>Lieferplattform-Bewertungen</h3>
+          <p style={{ fontSize: 12, color: "#64748b", margin: 0 }}>Automatisch abgerufen für „{businessName}"</p>
+        </div>
+        <button onClick={onRefresh} disabled={loading} style={{ padding: "7px 14px", borderRadius: 8, border: "1.5px solid #e2e8f0", backgroundColor: "#fff", color: "#6366f1", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
+          {loading ? "⏳ Sucht..." : "🔄 Neu prüfen"}
+        </button>
       </div>
 
-      {/* List */}
-      <div>
-        {filteredReviews.length === 0 ? (
-          <div style={{ textAlign: "center", padding: "64px 24px", color: "#94a3b8" }}>
-            <div style={{ fontSize: 48, marginBottom: 14 }}>📭</div>
-            <p style={{ fontSize: 16, fontWeight: 600, color: "#475569", margin: "0 0 8px" }}>Keine Bewertungen</p>
-            <p style={{ fontSize: 14, margin: 0 }}>
-              {activeTab === "all" ? "Erfasse deine erste Bewertung über den Sidebar-Button." : "Keine Einträge in dieser Kategorie."}
-            </p>
-          </div>
-        ) : (
-          filteredReviews.map((review, idx) => {
-            const platStyle = PLATFORM_COLORS[review.platform] ?? { bg: "#f1f5f9", color: "#475569", border: "#e2e8f0", accent: "#94a3b8" };
-            const isShowingAi = aiReply?.reviewId === review.id;
+      {loading ? (
+        <div style={{ ...card, display: "flex", alignItems: "center", justifyContent: "center", padding: 40, gap: 12 }}>
+          <div style={{ width: 20, height: 20, border: "3px solid #e2e8f0", borderTopColor: "#6366f1", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+          <span style={{ fontSize: 14, color: "#64748b" }}>Durchsuche Lieferando, Uber Eats, Wolt, Mjam...</span>
+          <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+        </div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14 }}>
+          {ratings.map((dr) => {
+            const dc = DELIVERY_COLORS[dr.platform] || { bg: "#f1f5f9", color: "#475569", icon: "⚪" };
+            const found = dr.rating !== null;
             return (
-              <div key={review.id} style={{
-                padding: "20px 24px",
-                borderBottom: idx < filteredReviews.length - 1 ? "1px solid #f8fafc" : "none",
-                borderLeft: `3px solid ${platStyle.accent}`,
-              }}>
-                <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
-                  <InitialAvatar name={review.author_name} size={40} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 5 }}>
-                      <span style={{ fontWeight: 700, color: "#0f172a", fontSize: 14 }}>{review.author_name}</span>
-                      <StarRating rating={review.rating} />
-                      <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 999, backgroundColor: platStyle.bg, color: platStyle.color, border: `1px solid ${platStyle.border}` }}>
-                        {review.platform}
-                      </span>
-                      {review.responded && (
-                        <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 999, backgroundColor: "#f0fdf4", color: "#15803d", border: "1px solid #bbf7d0" }}>
-                          ✓ Beantwortet
-                        </span>
-                      )}
-                    </div>
-                    <p style={{ fontSize: 14, color: "#374151", margin: "0 0 8px", lineHeight: 1.65 }}>{review.content}</p>
-                    <div style={{ fontSize: 12, color: "#94a3b8" }}>{formatDate(review.created_at)}</div>
-                  </div>
-
-                  {/* Actions */}
-                  <div style={{ display: "flex", gap: 6, flexShrink: 0, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                    <ActionBtn onClick={() => onAiReply(review, "personal")} color="#6366f1" bg="#eef2ff" border="#e0e7ff">💜 Persönlich</ActionBtn>
-                    <ActionBtn onClick={() => onAiReply(review, "neutral")} color="#475569" bg="#f8fafc" border="#e2e8f0">📝 Neutral</ActionBtn>
-                    {!review.responded && (
-                      <ActionBtn onClick={() => onMarkResponded(review.id)} color="#15803d" bg="#f0fdf4" border="#bbf7d0">✓ Beantwortet</ActionBtn>
-                    )}
-                    <ActionBtn onClick={() => onDelete(review.id)} color="#dc2626" bg="#fef2f2" border="#fecaca">✕</ActionBtn>
+              <div key={dr.platform} style={{ ...card, padding: 22, borderLeft: `4px solid ${dc.color}` }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                  <span style={{ fontSize: 24 }}>{dc.icon}</span>
+                  <div>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: dc.color }}>{dr.platform}</div>
+                    {dr.name && <div style={{ fontSize: 11, color: "#94a3b8" }}>{dr.name}</div>}
                   </div>
                 </div>
-
-                {/* AI Reply */}
-                {isShowingAi && (
-                  <div style={{
-                    marginTop: 16, marginLeft: 54,
-                    backgroundColor: aiReply!.style === "personal" ? "#f5f3ff" : "#f8fafc",
-                    border: `1.5px solid ${aiReply!.style === "personal" ? "#e0e7ff" : "#e2e8f0"}`,
-                    borderRadius: 12, padding: 16,
-                  }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: aiReply!.style === "personal" ? "#6366f1" : "#64748b" }}>
-                        {aiReply!.style === "personal" ? "💜 Persönliche Antwort" : "📝 Neutrale Antwort"}
-                      </span>
-                      <div style={{ display: "flex", gap: 8 }}>
-                        <button onClick={() => navigator.clipboard.writeText(aiReply!.text)} style={{ padding: "4px 10px", borderRadius: 6, border: "1.5px solid #e2e8f0", backgroundColor: "#ffffff", color: "#475569", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
-                          📋 Kopieren
-                        </button>
-                        <button onClick={() => setAiReply(null)} style={{ padding: "4px 8px", borderRadius: 6, border: "none", backgroundColor: "transparent", color: "#94a3b8", fontSize: 14, cursor: "pointer" }}>✕</button>
-                      </div>
-                    </div>
-                    <p style={{ fontSize: 14, color: "#374151", lineHeight: 1.7, margin: 0, whiteSpace: "pre-wrap" }}>{aiReply!.text}</p>
+                {found ? (
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                    <span style={{ fontSize: 32, fontWeight: 800, color: dc.color }}>{dr.rating!.toFixed(1)}</span>
+                    <span style={{ fontSize: 20, letterSpacing: 1 }}>
+                      {[1,2,3,4,5].map(s => <span key={s} style={{ color: s <= Math.round(dr.rating!) ? "#f59e0b" : "#e2e8f0" }}>★</span>)}
+                    </span>
+                    {dr.reviewCount && <span style={{ fontSize: 12, color: "#94a3b8" }}>({dr.reviewCount})</span>}
+                  </div>
+                ) : (
+                  <div style={{ padding: "10px 0", color: "#94a3b8", fontSize: 13 }}>
+                    ⚠️ {dr.error || "Nicht gefunden"}
                   </div>
                 )}
               </div>
             );
-          })
-        )}
-      </div>
+          })}
+        </div>
+      )}
+
+      {ratings.length > 0 && !loading && (
+        <div style={{ marginTop: 14, padding: "12px 16px", backgroundColor: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10 }}>
+          <p style={{ fontSize: 12, color: "#15803d", margin: 0 }}>
+            💡 <strong>Tipp:</strong> Bewertungen auf Lieferplattformen beeinflussen die Sichtbarkeit im Ranking. Antworte auch dort auf Bewertungen, um dein Profil zu stärken.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
 
 function ActionBtn({ onClick, color, bg, border, children }: { onClick: () => void; color: string; bg: string; border: string; children: React.ReactNode }) {
   return (
-    <button onClick={onClick} style={{ padding: "6px 10px", borderRadius: 7, border: `1.5px solid ${border}`, backgroundColor: bg, color, fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>
+    <button onClick={onClick} style={{ padding: "5px 9px", borderRadius: 7, border: `1.5px solid ${border}`, backgroundColor: bg, color, fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>
       {children}
     </button>
   );
 }
 
-/* ─── INVITE SECTION (inline) ─── */
+/* ─── INVITE SECTION ─── */
 function InviteSection({ businessName }: { businessName: string }) {
   const [customerName, setCustomerName] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
@@ -469,137 +761,85 @@ function InviteSection({ businessName }: { businessName: string }) {
 
   async function handleSend(e: React.FormEvent) {
     e.preventDefault();
-    setLoading(true);
-    setError(null);
+    setLoading(true); setError(null);
     const res = await fetch("/api/send-invitation", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ customerName, customerEmail, platform, reviewLink, businessName, template }),
     });
     const data = await res.json();
-    if (data.success) {
-      setSuccess(true);
-    } else {
-      setError(data.error || "Fehler beim Senden.");
-    }
+    if (data.success) setSuccess(true);
+    else setError(data.error || "Fehler beim Senden.");
     setLoading(false);
   }
 
-  function handleReset() {
-    setSuccess(false);
-    setCustomerName("");
-    setCustomerEmail("");
-    setReviewLink("");
-    setPlatform("Google");
-    setTemplate("freundlich");
+  if (success) {
+    return (
+      <div style={{ ...card, maxWidth: 480, textAlign: "center", padding: "48px 40px" }}>
+        <div style={{ fontSize: 48, marginBottom: 16 }}>🎉</div>
+        <h3 style={{ fontSize: 20, fontWeight: 800, color: "#0f172a", margin: "0 0 8px" }}>Einladung gesendet!</h3>
+        <p style={{ color: "#64748b", fontSize: 14, margin: "0 0 24px" }}>{customerName} hat die Bewertungseinladung erhalten.</p>
+        <button onClick={() => { setSuccess(false); setCustomerName(""); setCustomerEmail(""); setReviewLink(""); }} style={btnPrimary}>Weitere Einladung senden</button>
+      </div>
+    );
   }
 
-  const TEMPLATES: { id: EmailTemplate; label: string; desc: string; emoji: string }[] = [
-    { id: "freundlich", label: "Freundlich", desc: "Persönlich, mit Du-Form und Emojis", emoji: "😊" },
-    { id: "professionell", label: "Professionell", desc: "Formell, mit Sie-Form, seriös", emoji: "💼" },
-    { id: "gastro", label: "Gastro", desc: "Speziell für Restaurants & Cafés", emoji: "🍽️" },
+  const TMPL_OPTIONS: { id: EmailTemplate; label: string; emoji: string; desc: string }[] = [
+    { id: "freundlich", label: "Freundlich", emoji: "😊", desc: "Persönlich, Du-Form" },
+    { id: "professionell", label: "Professionell", emoji: "💼", desc: "Formell, Sie-Form" },
+    { id: "gastro", label: "Gastro", emoji: "🍽️", desc: "Für Restaurants" },
   ];
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 380px", gap: 24, maxWidth: 960 }}>
-      {/* Form */}
-      <div style={{ backgroundColor: "#ffffff", borderRadius: 16, padding: 28, border: "1px solid #e8edf3", boxShadow: "0 1px 8px rgba(0,0,0,0.04)" }}>
-        {success ? (
-          <div style={{ textAlign: "center", padding: "32px 0" }}>
-            <div style={{ fontSize: 56, marginBottom: 16 }}>🎉</div>
-            <h3 style={{ fontSize: 22, fontWeight: 800, color: "#0f172a", margin: "0 0 10px" }}>Einladung gesendet!</h3>
-            <p style={{ color: "#64748b", fontSize: 15, margin: "0 0 28px" }}>
-              {customerName} hat eine E-Mail mit dem Bewertungslink erhalten.
-            </p>
-            <button onClick={handleReset} style={btnPrimary}>Weitere Einladung senden</button>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 280px", gap: 18, maxWidth: 820 }}>
+      <div style={card}>
+        <h2 style={sectionTitle}>✉️ Einzelne Einladung senden</h2>
+        {error && <div style={errorBox}>{error}</div>}
+        <form onSubmit={handleSend} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <Field label="Kundenname">
+            <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} required placeholder="z.B. Maria Müller" style={input} onFocus={onFocus} onBlur={onBlur} />
+          </Field>
+          <Field label="E-Mail-Adresse">
+            <input type="email" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} required placeholder="kunde@email.com" style={input} onFocus={onFocus} onBlur={onBlur} />
+          </Field>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <Field label="Plattform">
+              <select value={platform} onChange={(e) => setPlatform(e.target.value)} style={{ ...input, cursor: "pointer" }}>
+                {PLATFORMS.map((p) => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </Field>
+            <Field label="Review-Link (optional)">
+              <input value={reviewLink} onChange={(e) => setReviewLink(e.target.value)} placeholder="https://g.page/r/..." style={input} onFocus={onFocus} onBlur={onBlur} />
+            </Field>
           </div>
-        ) : (
-          <>
-            <h2 style={{ fontSize: 20, fontWeight: 800, color: "#0f172a", margin: "0 0 6px" }}>✉️ Einladung senden</h2>
-            <p style={{ fontSize: 14, color: "#64748b", margin: "0 0 24px" }}>Sende deinem Kunden eine persönliche Bewertungseinladung per E-Mail.</p>
-
-            {error && <div style={{ backgroundColor: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, padding: "12px 16px", marginBottom: 16, color: "#dc2626", fontSize: 14 }}>{error}</div>}
-
-            <form onSubmit={handleSend} style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-              <InlineField label="Name des Kunden">
-                <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} required placeholder="z.B. Maria Müller" style={inputStyle} onFocus={focusStyle} onBlur={blurStyle} />
-              </InlineField>
-              <InlineField label="E-Mail-Adresse">
-                <input type="email" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} required placeholder="kunde@email.com" style={inputStyle} onFocus={focusStyle} onBlur={blurStyle} />
-              </InlineField>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                <InlineField label="Plattform">
-                  <select value={platform} onChange={(e) => setPlatform(e.target.value)} style={{ ...inputStyle, cursor: "pointer" }}>
-                    {PLATFORMS.map((p) => <option key={p} value={p}>{p}</option>)}
-                  </select>
-                </InlineField>
-                <InlineField label="Review-Link (optional)">
-                  <input value={reviewLink} onChange={(e) => setReviewLink(e.target.value)} placeholder="https://g.page/r/..." style={inputStyle} onFocus={focusStyle} onBlur={blurStyle} />
-                </InlineField>
-              </div>
-
-              {/* Template Picker */}
-              <InlineField label="E-Mail-Stil">
-                <div style={{ display: "flex", gap: 8 }}>
-                  {TEMPLATES.map((t) => (
-                    <button
-                      key={t.id}
-                      type="button"
-                      onClick={() => setTemplate(t.id)}
-                      style={{
-                        flex: 1, padding: "10px 8px", borderRadius: 10, cursor: "pointer", fontFamily: "inherit",
-                        border: template === t.id ? "2px solid #6366f1" : "2px solid #e2e8f0",
-                        backgroundColor: template === t.id ? "#eef2ff" : "#f8fafc",
-                        textAlign: "center", transition: "all 0.15s",
-                      }}
-                    >
-                      <div style={{ fontSize: 20, marginBottom: 4 }}>{t.emoji}</div>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: template === t.id ? "#4338ca" : "#374151" }}>{t.label}</div>
-                    </button>
-                  ))}
-                </div>
-                <p style={{ fontSize: 12, color: "#94a3b8", margin: "6px 0 0" }}>
-                  {TEMPLATES.find((t) => t.id === template)?.desc}
-                </p>
-              </InlineField>
-
-              <button type="submit" disabled={loading} style={{ ...btnPrimary, backgroundColor: loading ? "#a5b4fc" : "#22c55e", boxShadow: "0 2px 8px rgba(34,197,94,0.25)", marginTop: 4 }}>
-                {loading ? "Sende..." : "✉️ Einladung senden"}
-              </button>
-            </form>
-          </>
-        )}
-      </div>
-
-      {/* Tips Panel */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        <div style={{ backgroundColor: "#ffffff", borderRadius: 16, padding: 24, border: "1px solid #e8edf3", boxShadow: "0 1px 8px rgba(0,0,0,0.04)" }}>
-          <h3 style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", margin: "0 0 14px" }}>💡 Tipps für mehr Bewertungen</h3>
-          {[
-            { emoji: "⏰", tip: "Sende die Einladung am selben Tag — wenn der Besuch noch frisch ist." },
-            { emoji: "📝", tip: "Personalisierte E-Mails werden 3× häufiger geöffnet." },
-            { emoji: "🎯", tip: "Google-Bewertungen haben den größten Einfluss auf das Ranking." },
-            { emoji: "🔁", tip: "Regelmäßige Einladungen erhöhen den Bewertungsstrom konstant." },
-          ].map((t) => (
-            <div key={t.tip} style={{ display: "flex", gap: 10, marginBottom: 10, alignItems: "flex-start" }}>
-              <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>{t.emoji}</span>
-              <p style={{ fontSize: 13, color: "#475569", margin: 0, lineHeight: 1.5 }}>{t.tip}</p>
+          <Field label="E-Mail-Stil">
+            <div style={{ display: "flex", gap: 6 }}>
+              {TMPL_OPTIONS.map((t) => (
+                <button key={t.id} type="button" onClick={() => setTemplate(t.id)} style={{ flex: 1, padding: "9px 6px", borderRadius: 10, cursor: "pointer", fontFamily: "inherit", border: template === t.id ? "2px solid #6366f1" : "2px solid #e2e8f0", backgroundColor: template === t.id ? "#eef2ff" : "#f8fafc", textAlign: "center" }}>
+                  <div style={{ fontSize: 16, marginBottom: 2 }}>{t.emoji}</div>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: template === t.id ? "#4338ca" : "#374151" }}>{t.label}</div>
+                </button>
+              ))}
             </div>
+          </Field>
+          <button type="submit" disabled={loading} style={{ ...btnPrimary, backgroundColor: loading ? "#a5b4fc" : "#22c55e", boxShadow: "0 2px 8px rgba(34,197,94,0.25)" }}>
+            {loading ? "Sendet..." : "✉️ Einladung senden"}
+          </button>
+        </form>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <div style={{ ...card, backgroundColor: "#f0fdf4", border: "1px solid #bbf7d0" }}>
+          <p style={{ fontSize: 12, fontWeight: 700, color: "#15803d", margin: "0 0 8px" }}>💡 Tipps</p>
+          {["Gleicher Tag → höhere Rücklaufquote", "Personalisiert → 3× mehr Klicks", "Google hat den höchsten SEO-Einfluss"].map((t) => (
+            <p key={t} style={{ fontSize: 11, color: "#166534", margin: "0 0 5px", paddingLeft: 10, borderLeft: "2px solid #4ade80", lineHeight: 1.5 }}>{t}</p>
           ))}
-        </div>
-
-        <div style={{ backgroundColor: "#f0fdf4", borderRadius: 16, padding: 20, border: "1px solid #bbf7d0" }}>
-          <p style={{ fontSize: 13, fontWeight: 700, color: "#15803d", margin: "0 0 6px" }}>📈 Dein Potenzial</p>
-          <p style={{ fontSize: 13, color: "#166534", margin: 0, lineHeight: 1.6 }}>
-            Betriebe die ReviewBoost nutzen sammeln im Schnitt <strong>3× mehr Bewertungen</strong> pro Monat.
-          </p>
         </div>
       </div>
     </div>
   );
 }
 
-/* ─── QR SECTION (inline) ─── */
+/* ─── QR SECTION ─── */
 function QRSection({ businessName }: { businessName: string }) {
   const [platform, setPlatform] = useState("Google");
   const [reviewLink, setReviewLink] = useState("");
@@ -609,90 +849,43 @@ function QRSection({ businessName }: { businessName: string }) {
     ? `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(reviewLink)}&bgcolor=ffffff&color=1e1b4b&margin=12`
     : null;
 
-  const whatsappText = encodeURIComponent(
-    `Hallo! Wir würden uns sehr über deine Bewertung auf ${platform} freuen 🌟\n\n${reviewLink || "[Link einfügen]"}\n\nVielen Dank! 🙏`
-  );
-
-  function handleCopy() {
-    if (!reviewLink) return;
-    navigator.clipboard.writeText(reviewLink);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }
-
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, maxWidth: 900 }}>
-      {/* Config */}
-      <div style={{ backgroundColor: "#ffffff", borderRadius: 16, padding: 28, border: "1px solid #e8edf3", boxShadow: "0 1px 8px rgba(0,0,0,0.04)" }}>
-        <h2 style={{ fontSize: 20, fontWeight: 800, color: "#0f172a", margin: "0 0 6px" }}>📱 QR-Code & Links</h2>
-        <p style={{ fontSize: 14, color: "#64748b", margin: "0 0 24px" }}>Generiere QR-Codes und Direktlinks für alle Plattformen.</p>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-          <InlineField label="Plattform">
-            <select value={platform} onChange={(e) => setPlatform(e.target.value)} style={{ ...inputStyle, cursor: "pointer" }}>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, maxWidth: 720 }}>
+      <div style={card}>
+        <h2 style={sectionTitle}>📱 QR-Code & Direktlink</h2>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <Field label="Plattform">
+            <select value={platform} onChange={(e) => setPlatform(e.target.value)} style={{ ...input, cursor: "pointer" }}>
               {PLATFORMS.map((p) => <option key={p} value={p}>{p}</option>)}
             </select>
-          </InlineField>
-          <InlineField label="Dein Review-Link">
-            <input value={reviewLink} onChange={(e) => setReviewLink(e.target.value)} placeholder="https://g.page/r/..." style={inputStyle} onFocus={focusStyle} onBlur={blurStyle} />
-          </InlineField>
+          </Field>
+          <Field label="Dein Review-Link">
+            <input value={reviewLink} onChange={(e) => setReviewLink(e.target.value)} placeholder="https://g.page/r/..." style={input} onFocus={onFocus} onBlur={onBlur} />
+          </Field>
         </div>
-
         {qrUrl && (
-          <div style={{ marginTop: 24 }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              <a href={qrUrl} download="bewertungs-qr.png" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "11px", backgroundColor: "#6366f1", color: "#fff", textDecoration: "none", borderRadius: 10, fontSize: 14, fontWeight: 700 }}>
-                ⬇️ QR-Code herunterladen
-              </a>
-              <button onClick={handleCopy} style={{ padding: "11px", backgroundColor: copied ? "#22c55e" : "#f8fafc", color: copied ? "#fff" : "#374151", border: `1.5px solid ${copied ? "#22c55e" : "#e2e8f0"}`, borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", transition: "all 0.2s" }}>
-                {copied ? "✓ Kopiert!" : "🔗 Link kopieren"}
-              </button>
-              <a href={`https://wa.me/?text=${whatsappText}`} target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "11px", backgroundColor: "#22c55e", color: "#fff", textDecoration: "none", borderRadius: 10, fontSize: 14, fontWeight: 700 }}>
-                📱 WhatsApp öffnen
-              </a>
-            </div>
+          <div style={{ marginTop: 18, display: "flex", flexDirection: "column", gap: 7 }}>
+            <a href={qrUrl} download="qr.png" style={{ ...btnPrimary, textAlign: "center", textDecoration: "none", display: "block", fontSize: 12, padding: "9px 16px" }}>⬇️ QR herunterladen</a>
+            <button onClick={() => { navigator.clipboard.writeText(reviewLink); setCopied(true); setTimeout(() => setCopied(false), 2000); }} style={{ ...btnSecondary, backgroundColor: copied ? "#f0fdf4" : "#f8fafc", color: copied ? "#15803d" : "#374151", fontSize: 12, padding: "9px 16px" }}>
+              {copied ? "✓ Kopiert!" : "🔗 Link kopieren"}
+            </button>
           </div>
         )}
-
-        {!qrUrl && (
-          <div style={{ marginTop: 20, textAlign: "center", padding: "28px", backgroundColor: "#f8fafc", borderRadius: 12, border: "2px dashed #e2e8f0" }}>
-            <p style={{ fontSize: 30, margin: "0 0 8px" }}>🔗</p>
-            <p style={{ fontSize: 13, color: "#94a3b8", margin: 0 }}>Trage deinen Review-Link ein,<br />um den QR-Code zu generieren.</p>
-          </div>
-        )}
+        {!qrUrl && <div style={{ marginTop: 18, textAlign: "center", padding: 24, backgroundColor: "#f8fafc", borderRadius: 12, border: "2px dashed #e2e8f0", color: "#94a3b8", fontSize: 12 }}>Review-Link eintragen → QR erscheint</div>}
       </div>
-
-      {/* QR Preview */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        {qrUrl ? (
-          <div style={{ backgroundColor: "#ffffff", borderRadius: 16, padding: 28, border: "1px solid #e8edf3", boxShadow: "0 1px 8px rgba(0,0,0,0.04)", textAlign: "center" }}>
-            <p style={{ fontSize: 13, fontWeight: 600, color: "#64748b", margin: "0 0 16px", textTransform: "uppercase", letterSpacing: "0.4px" }}>Vorschau</p>
-            <img src={qrUrl} alt="QR Code" style={{ width: 180, height: 180, borderRadius: 12, border: "1px solid #e8edf3" }} />
-            <p style={{ fontSize: 12, color: "#94a3b8", margin: "12px 0 0" }}>Zum Scannen & Ausdrucken bereit</p>
-          </div>
-        ) : null}
-
-        <div style={{ backgroundColor: "#eff6ff", borderRadius: 16, padding: 20, border: "1px solid #bfdbfe" }}>
-          <h3 style={{ fontSize: 14, fontWeight: 700, color: "#1d4ed8", margin: "0 0 12px" }}>💡 Verwendungstipps</h3>
-          {[
-            "QR-Code an der Kasse oder am Tisch aufstellen",
-            "Auf Kassenbons oder Visitenkarten drucken",
-            "WhatsApp-Link nach dem Besuch senden",
-            "Im E-Mail-Footer einbinden",
-          ].map((tip) => (
-            <div key={tip} style={{ display: "flex", gap: 8, marginBottom: 7 }}>
-              <span style={{ color: "#3b82f6", fontWeight: 700, flexShrink: 0 }}>→</span>
-              <p style={{ fontSize: 13, color: "#1e40af", margin: 0, lineHeight: 1.4 }}>{tip}</p>
-            </div>
-          ))}
+      {qrUrl && (
+        <div style={{ ...card, textAlign: "center" }}>
+          <p style={{ fontSize: 11, fontWeight: 600, color: "#94a3b8", margin: "0 0 14px", textTransform: "uppercase", letterSpacing: "0.4px" }}>Vorschau</p>
+          <img src={qrUrl} alt="QR" style={{ width: 160, height: 160, borderRadius: 12, border: "1px solid #e8edf3" }} />
+          <p style={{ fontSize: 11, color: "#94a3b8", marginTop: 8 }}>{platform} · Scannen & bewerten</p>
         </div>
-      </div>
+      )}
     </div>
   );
 }
 
 /* ─── ADD REVIEW MODAL ─── */
-function AddReviewModal({ userId, onClose, onAdded }: { userId: string; onClose: () => void; onAdded: (r: Review) => void }) {
+function AddReviewModal({ userId, userEmail, businessName, onClose, onAdded }: { userId: string; userEmail: string; businessName: string; onClose: () => void; onAdded: (r: Review) => void }) {
   const [authorName, setAuthorName] = useState("");
   const [platform, setPlatform] = useState("Google");
   const [rating, setRating] = useState(5);
@@ -702,45 +895,54 @@ function AddReviewModal({ userId, onClose, onAdded }: { userId: string; onClose:
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setLoading(true);
-    setError(null);
+    setLoading(true); setError(null);
     const supabase = createClient();
     const { data, error } = await supabase.from("reviews").insert({ user_id: userId, author_name: authorName, platform, rating, content, responded: false }).select().single();
-    if (error) { setError("Fehler beim Speichern."); setLoading(false); }
-    else { onAdded(data as Review); }
+    if (error) { setError("Fehler beim Speichern."); setLoading(false); return; }
+    if (rating <= 2) {
+      fetch("/api/alert-notification", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: userEmail, businessName, authorName, rating, content, platform,
+          reviewDate: new Date().toLocaleDateString("de-AT", { day: "2-digit", month: "short", year: "numeric" }),
+        }),
+      }).catch(() => {});
+    }
+    onAdded(data as Review);
   }
 
   return (
-    <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(15,23,42,0.65)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200, padding: "24px", backdropFilter: "blur(4px)" }} onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div style={{ backgroundColor: "#ffffff", borderRadius: 20, padding: "36px", width: "100%", maxWidth: 500, boxShadow: "0 24px 80px rgba(0,0,0,0.2)", maxHeight: "90vh", overflowY: "auto" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
-          <h2 style={{ fontSize: 20, fontWeight: 800, color: "#0f172a", margin: 0 }}>Bewertung erfassen</h2>
-          <button onClick={onClose} style={{ background: "#f1f5f9", border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 16, color: "#64748b", display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
+    <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(15,23,42,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200, padding: 24, backdropFilter: "blur(4px)" }} onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div style={{ backgroundColor: "#fff", borderRadius: 20, padding: 32, width: "100%", maxWidth: 460, boxShadow: "0 24px 80px rgba(0,0,0,0.2)", maxHeight: "90vh", overflowY: "auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+          <h2 style={{ fontSize: 17, fontWeight: 800, color: "#0f172a", margin: 0 }}>Bewertung erfassen</h2>
+          <button onClick={onClose} style={{ background: "#f1f5f9", border: "none", borderRadius: 8, width: 28, height: 28, cursor: "pointer", fontSize: 13, color: "#64748b", display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
         </div>
-        {error && <div style={{ backgroundColor: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, padding: "12px 16px", marginBottom: 16, color: "#dc2626", fontSize: 14 }}>{error}</div>}
-        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <InlineField label="Name des Rezensenten">
-            <input value={authorName} onChange={(e) => setAuthorName(e.target.value)} required placeholder="z.B. Maria K." style={inputStyle} onFocus={focusStyle} onBlur={blurStyle} />
-          </InlineField>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <InlineField label="Plattform">
-              <select value={platform} onChange={(e) => setPlatform(e.target.value)} style={{ ...inputStyle, cursor: "pointer" }}>
+        {error && <div style={errorBox}>{error}</div>}
+        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <Field label="Name des Rezensenten">
+            <input value={authorName} onChange={(e) => setAuthorName(e.target.value)} required placeholder="z.B. Maria K." style={input} onFocus={onFocus} onBlur={onBlur} />
+          </Field>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <Field label="Plattform">
+              <select value={platform} onChange={(e) => setPlatform(e.target.value)} style={{ ...input, cursor: "pointer" }}>
                 {PLATFORMS.map((p) => <option key={p} value={p}>{p}</option>)}
               </select>
-            </InlineField>
-            <InlineField label="Bewertung">
-              <select value={rating} onChange={(e) => setRating(Number(e.target.value))} style={{ ...inputStyle, cursor: "pointer" }}>
-                {[5, 4, 3, 2, 1].map((r) => <option key={r} value={r}>{"★".repeat(r)} ({r}/5)</option>)}
+            </Field>
+            <Field label="Bewertung">
+              <select value={rating} onChange={(e) => setRating(Number(e.target.value))} style={{ ...input, cursor: "pointer" }}>
+                {[5,4,3,2,1].map((r) => <option key={r} value={r}>{"★".repeat(r)} ({r}/5)</option>)}
               </select>
-            </InlineField>
+            </Field>
           </div>
-          <InlineField label="Bewertungstext">
-            <textarea value={content} onChange={(e) => setContent(e.target.value)} required placeholder="Was hat der Kunde geschrieben?" rows={4} style={{ ...inputStyle, resize: "vertical", minHeight: 100 }} onFocus={focusStyle} onBlur={blurStyle} />
-          </InlineField>
-          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 4 }}>
+          <Field label="Bewertungstext">
+            <textarea value={content} onChange={(e) => setContent(e.target.value)} required placeholder="Was hat der Kunde geschrieben?" rows={3} style={{ ...input, resize: "vertical", minHeight: 80 }} onFocus={onFocus} onBlur={onBlur} />
+          </Field>
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
             <button type="button" onClick={onClose} style={btnSecondary}>Abbrechen</button>
             <button type="submit" disabled={loading} style={{ ...btnPrimary, backgroundColor: loading ? "#a5b4fc" : "#6366f1" }}>
-              {loading ? "Speichern..." : "Speichern"}
+              {loading ? "Speichert..." : "Speichern"}
             </button>
           </div>
         </form>
@@ -750,17 +952,19 @@ function AddReviewModal({ userId, onClose, onAdded }: { userId: string; onClose:
 }
 
 /* ─── SHARED ─── */
-function InlineField({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 6 }}>{label}</label>
+      <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#374151", marginBottom: 5 }}>{label}</label>
       {children}
     </div>
   );
 }
 
-const inputStyle: React.CSSProperties = { width: "100%", padding: "11px 13px", borderRadius: 10, border: "1.5px solid #e2e8f0", fontSize: 14, outline: "none", boxSizing: "border-box", fontFamily: "inherit", color: "#0f172a", backgroundColor: "#f8fafc", transition: "border-color 0.15s" };
-const focusStyle = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => (e.target.style.borderColor = "#6366f1");
-const blurStyle = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => (e.target.style.borderColor = "#e2e8f0");
-const btnPrimary: React.CSSProperties = { padding: "11px 22px", borderRadius: 10, border: "none", backgroundColor: "#6366f1", color: "#ffffff", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" };
-const btnSecondary: React.CSSProperties = { padding: "11px 18px", borderRadius: 10, border: "1.5px solid #e2e8f0", backgroundColor: "#ffffff", color: "#475569", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" };
+const input: React.CSSProperties = { width: "100%", padding: "10px 12px", borderRadius: 10, border: "1.5px solid #e2e8f0", fontSize: 13, outline: "none", boxSizing: "border-box", fontFamily: "inherit", color: "#0f172a", backgroundColor: "#f8fafc", transition: "border-color 0.15s" };
+const onFocus = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => (e.target.style.borderColor = "#6366f1");
+const onBlur = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => (e.target.style.borderColor = "#e2e8f0");
+const btnPrimary: React.CSSProperties = { padding: "10px 18px", borderRadius: 10, border: "none", backgroundColor: "#6366f1", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" };
+const btnSecondary: React.CSSProperties = { padding: "10px 14px", borderRadius: 10, border: "1.5px solid #e2e8f0", backgroundColor: "#fff", color: "#475569", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" };
+const sectionTitle: React.CSSProperties = { fontSize: 16, fontWeight: 700, color: "#0f172a", margin: "0 0 18px" };
+const errorBox: React.CSSProperties = { backgroundColor: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, padding: "10px 13px", marginBottom: 14, color: "#dc2626", fontSize: 12 };

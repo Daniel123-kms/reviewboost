@@ -18,7 +18,7 @@ type Place = {
 
 type SavedBusiness = Place & { chain_name?: string };
 
-type Step = "mode" | "search" | "confirm" | "goals" | "review-link" | "chain-add" | "done";
+type Step = "mode" | "search" | "confirm" | "manual" | "goals" | "review-link" | "chain-add" | "done";
 
 const GOALS = [
   { id: "more-reviews", emoji: "📈", label: "Mehr Bewertungen sammeln", desc: "Gezielt mehr Kunden zur Bewertung einladen" },
@@ -40,6 +40,9 @@ export default function OnboardingPage() {
   const [searching, setSearching] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [manualName, setManualName] = useState("");
+  const [manualAddress, setManualAddress] = useState("");
+  const [manualReviewUrl, setManualReviewUrl] = useState("");
   const [selectedGoals, setSelectedGoals] = useState<Set<string>>(new Set());
   const [reviewLink, setReviewLink] = useState("");
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -100,8 +103,30 @@ export default function OnboardingPage() {
     router.refresh();
   }
 
+  async function handleManualConfirm() {
+    if (!manualName.trim()) return;
+    setSaving(true);
+    setError(null);
+    const manualPlace: SavedBusiness = {
+      place_id: "",
+      name: manualName.trim(),
+      address: manualAddress.trim(),
+      google_maps_url: "",
+      google_review_url: manualReviewUrl.trim(),
+      types: [],
+      chain_name: mode === "chain" ? chainName : undefined,
+    };
+    const ok = await saveBusiness(manualPlace);
+    if (!ok) { setError("Fehler beim Speichern. Bitte versuche es erneut."); setSaving(false); return; }
+    setBusinesses((prev) => [...prev, manualPlace]);
+    setSelected(manualPlace);
+    setSaving(false);
+    setReviewLink(manualReviewUrl.trim());
+    setStep("goals");
+  }
+
   const progressMap: Record<Step, number> = {
-    "mode": 12, "search": 30, "confirm": 48, "goals": 65, "review-link": 82, "chain-add": 82, "done": 100,
+    "mode": 12, "search": 30, "confirm": 48, "manual": 48, "goals": 65, "review-link": 82, "chain-add": 82, "done": 100,
   };
   const progress = progressMap[step] ?? 50;
 
@@ -160,6 +185,11 @@ export default function OnboardingPage() {
           <p style={{ fontSize: 14, color: "#64748b", margin: 0 }}>Keine Ergebnisse.<br />Versuch es mit einem anderen Namen oder der genauen Adresse.</p>
         </div>
       )}
+      <div style={{ marginTop: 16, textAlign: "center" }}>
+        <span onClick={() => setStep("manual")} style={{ fontSize: 13, color: "#6366f1", cursor: "pointer" }}>
+          Betrieb nicht gefunden? Manuell eingeben →
+        </span>
+      </div>
       {mode === "chain" && businesses.length > 0 && (
         <div style={{ marginTop: 20, padding: "16px", backgroundColor: "#f0fdf4", borderRadius: 12, border: "1.5px solid #bbf7d0" }}>
           <p style={{ fontSize: 13, fontWeight: 700, color: "#15803d", margin: "0 0 8px" }}>✅ Bereits hinzugefügt ({businesses.length}):</p>
@@ -203,6 +233,38 @@ export default function OnboardingPage() {
           {saving ? "Speichere..." : "✅ Ja, das ist mein Betrieb!"}
         </button>
       </div>
+    </PageShell>
+  );
+
+  /* ── STEP: MANUAL ── */
+  if (step === "manual") return (
+    <PageShell progress={progress}>
+      <button onClick={() => setStep("search")} style={backBtn}>← Zurück zur Suche</button>
+      <h1 style={headingStyle}>Betrieb manuell eingeben</h1>
+      <p style={subStyle}>Füll die Felder unten aus — du kannst alle Angaben später noch ändern.</p>
+      <div style={{ display: "flex", flexDirection: "column", gap: 16, marginTop: 24 }}>
+        <div>
+          <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 6 }}>Name des Betriebs *</label>
+          <input value={manualName} onChange={(e) => setManualName(e.target.value)} placeholder="z.B. Mario's Pizza Wien"
+            style={{ ...inputStyle, fontSize: 15 }} autoFocus />
+        </div>
+        <div>
+          <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 6 }}>Adresse</label>
+          <input value={manualAddress} onChange={(e) => setManualAddress(e.target.value)} placeholder="z.B. Mariahilfer Straße 1, 1060 Wien"
+            style={{ ...inputStyle, fontSize: 15 }} />
+        </div>
+        <div>
+          <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 6 }}>Google Review-Link (optional)</label>
+          <input value={manualReviewUrl} onChange={(e) => setManualReviewUrl(e.target.value)} placeholder="https://g.page/r/..."
+            style={{ ...inputStyle, fontSize: 15 }} />
+          <p style={{ fontSize: 12, color: "#94a3b8", margin: "6px 0 0" }}>💡 Findest du im Google Business-Profil unter „Bewertungen anfordern"</p>
+        </div>
+      </div>
+      {error && <div style={{ marginTop: 16, padding: "12px 16px", backgroundColor: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, color: "#dc2626", fontSize: 14 }}>{error}</div>}
+      <button onClick={handleManualConfirm} disabled={saving || manualName.trim().length < 2}
+        style={{ ...primaryBtn, width: "100%", marginTop: 24, opacity: (saving || manualName.trim().length < 2) ? 0.6 : 1 }}>
+        {saving ? "Speichere..." : "✅ Betrieb speichern & weiter"}
+      </button>
     </PageShell>
   );
 

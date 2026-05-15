@@ -1,8 +1,24 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "ReviewBoost — Mehr echte Bewertungen für dein Business",
-  description: "Sammle, verwalte und analysiere Kundenbewertungen automatisch. Steigere dein Ranking auf Google, Tripadvisor & Co.",
+  title: "ReviewBoost — Bewertungsmanagement für Restaurants & Gastronomie",
+  description: "Automatisiertes Bewertungsmanagement für Restaurants: KI-Antworten, QR-Codes, Konkurrenz-Radar, Lieferplattform-Tracking. DSGVO-konform. Ersten Monat gratis.",
+  keywords: ["Bewertungsmanagement", "Restaurant", "Google Bewertungen", "Gastronomie", "KI Antworten", "Review Management", "Lieferando", "Uber Eats", "Foodora", "Wolt"],
+  authors: [{ name: "ReviewBoost" }],
+  openGraph: {
+    title: "ReviewBoost — Mehr Sterne. Mehr Gäste. Weniger Aufwand.",
+    description: "Automatisiertes Bewertungsmanagement für Restaurants & lokale Betriebe. Ersten Monat gratis.",
+    url: "https://reviewboost-lyart.vercel.app",
+    siteName: "ReviewBoost",
+    locale: "de_AT",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "ReviewBoost — Bewertungsmanagement für Restaurants",
+    description: "KI-Antworten, Konkurrenz-Radar, Lieferplattform-Tracking. Ersten Monat gratis.",
+  },
+  robots: { index: true, follow: true },
 };
 
 export default function RootLayout({
