@@ -112,7 +112,7 @@ export default function SignupPage() {
 
         <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
           <h2 style={{ fontSize: 28, fontWeight: 800, color: "#fff", margin: "0 0 12px", letterSpacing: "-0.5px", lineHeight: 1.2 }}>
-            14 Tage kostenlos.<br />Kein Risiko.
+            Ersten Monat gratis.<br />Kein Risiko.
           </h2>
           <p style={{ fontSize: 16, color: "rgba(255,255,255,0.6)", margin: "0 0 40px", lineHeight: 1.6 }}>
             Probiere ReviewBoost vollständig aus — keine Kreditkarte, keine Bindung.
@@ -250,7 +250,7 @@ export default function SignupPage() {
             </form>
 
             <p style={{ textAlign: "center", marginTop: 18, fontSize: 12, color: "#94a3b8", lineHeight: 1.5 }}>
-              Keine Kreditkarte · 14 Tage kostenlos · Jederzeit kündbar
+              Keine Kreditkarte · Ersten Monat gratis · Jederzeit kündbar
             </p>
           </div>
         </div>
