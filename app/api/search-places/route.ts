@@ -16,9 +16,10 @@ export async function GET(request: Request) {
   }
 
   try {
-    // Text Search
+    // Text Search — biased to Austria (DACH), center of Vienna as location bias
+    const locationBias = "circle:200000@48.2082,16.3738"; // 200km radius around Vienna
     const searchRes = await fetch(
-      `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(query)}&language=de&key=${apiKey}`,
+      `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(query)}&language=de&region=at&locationbias=${locationBias}&key=${apiKey}`,
       { next: { revalidate: 0 } }
     )
     const searchData = await searchRes.json()
