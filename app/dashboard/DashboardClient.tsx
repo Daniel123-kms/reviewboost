@@ -649,6 +649,7 @@ export default function DashboardClient({ user, initialReviews, hasBusinesses = 
                   myRating={reviews.length > 0 ? parseFloat((reviews.reduce((s, r) => s + r.rating, 0) / reviews.length).toFixed(1)) : 0}
                   myReviewCount={reviews.length}
                   defaultAddress={activeBusiness?.address || ""}
+                  businessCategory={activeBusiness?.category ?? null}
                 />
               )}
               {marktTab === "analytics" && <AnalyticsSection reviews={reviews} />}

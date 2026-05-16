@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 type Competitor = {
   placeId: string; name: string; rating: number; reviewCount: number;
@@ -13,7 +13,30 @@ const CUISINE_TYPES = [
   "Griechisch", "Italienisch", "Japanisch / Sushi", "Chinesisch", "Türkisch",
   "Indisch", "Thai", "Mexikanisch", "Amerikanisch / Burger", "Österreichisch",
   "Pizza", "Vegetarisch / Vegan", "Meeresfrüchte", "Steakhouse", "Café / Frühstück",
+  "Restaurant", "Bar", "Bäckerei",
 ];
+
+/** Guess the best cuisine from a business name + optional category string */
+function guessCuisine(name: string, category?: string | null): string {
+  const text = `${name} ${category || ""}`.toLowerCase();
+  if (text.includes("greek") || text.includes("griech")) return "Griechisch";
+  if (text.includes("pizza")) return "Pizza";
+  if (text.includes("italian") || text.includes("italie") || text.includes("pasta")) return "Italienisch";
+  if (text.includes("sushi") || text.includes("japan") || text.includes("ramen")) return "Japanisch / Sushi";
+  if (text.includes("chinese") || text.includes("chines") || text.includes("wok")) return "Chinesisch";
+  if (text.includes("turkish") || text.includes("türk") || text.includes("kebab") || text.includes("döner")) return "Türkisch";
+  if (text.includes("indian") || text.includes("india") || text.includes("curry")) return "Indisch";
+  if (text.includes("thai")) return "Thai";
+  if (text.includes("mexic") || text.includes("taco") || text.includes("burrito")) return "Mexikanisch";
+  if (text.includes("burger") || text.includes("american") || text.includes("bbq")) return "Amerikanisch / Burger";
+  if (text.includes("austrian") || text.includes("österreich") || text.includes("wirtshaus") || text.includes("heurig") || text.includes("gasthaus") || text.includes("beisl")) return "Österreichisch";
+  if (text.includes("vegan") || text.includes("vegetar")) return "Vegetarisch / Vegan";
+  if (text.includes("seafood") || text.includes("fish") || text.includes("meeres")) return "Meeresfrüchte";
+  if (text.includes("steak") || text.includes("grill")) return "Steakhouse";
+  if (text.includes("café") || text.includes("cafe") || text.includes("coffee") || text.includes("bäckerei") || text.includes("bakery") || text.includes("konditor") || text.includes("frühstück")) return "Café / Frühstück";
+  if (text.includes("bar") || text.includes("pub") || text.includes("lounge")) return "Bar";
+  return "Restaurant";
+}
 
 const RADIUS_OPTIONS = [
   { label: "300 m", value: 300 }, { label: "500 m", value: 500 },
@@ -243,12 +266,12 @@ function ActionPlan({ me, competitors }: { me: { rating: number; reviewCount: nu
 
 /* ── MAIN ── */
 export default function KonkurrenzRadarSection({
-  businessName, myRating, myReviewCount, defaultAddress = "",
+  businessName, myRating, myReviewCount, defaultAddress = "", businessCategory,
 }: {
-  businessName: string; myRating: number; myReviewCount: number; defaultAddress?: string;
+  businessName: string; myRating: number; myReviewCount: number; defaultAddress?: string; businessCategory?: string | null;
 }) {
   const [address, setAddress] = useState(defaultAddress);
-  const [cuisine, setCuisine] = useState("Griechisch");
+  const [cuisine, setCuisine] = useState(() => guessCuisine(businessName, businessCategory));
   const [radius, setRadius] = useState(1000);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -257,18 +280,40 @@ export default function KonkurrenzRadarSection({
   const [searched, setSearched] = useState(false);
   const [activeView, setActiveView] = useState<"chart" | "karten" | "analyse">("chart");
 
-  async function handleSearch(e: React.FormEvent) {
-    e.preventDefault();
-    if (!address.trim()) return;
+  // Keep address + cuisine in sync when the active business changes
+  useEffect(() => {
+    setAddress(defaultAddress);
+    setCuisine(guessCuisine(businessName, businessCategory));
+    setSearched(false);
+    setCompetitors([]);
+  }, [defaultAddress, businessName, businessCategory]);
+
+  const runSearch = useCallback(async (addr: string, r: number, c: string) => {
+    if (!addr.trim()) return;
     setLoading(true); setError(null); setSearched(false);
     const res = await fetch("/api/competitors", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ address, radius, cuisine }),
+      body: JSON.stringify({ address: addr, radius: r, cuisine: c }),
     });
     const data = await res.json();
     if (data.error) { setError(data.error); }
     else { setCompetitors(data.competitors || []); setFormattedAddress(data.formattedAddress); setSearched(true); }
     setLoading(false);
+  }, []);
+
+  // Auto-search when address is pre-filled (business already selected)
+  useEffect(() => {
+    if (defaultAddress.trim().length > 5) {
+      const detectedCuisine = guessCuisine(businessName, businessCategory);
+      runSearch(defaultAddress, 1000, detectedCuisine);
+    }
+  // Only trigger on mount / when business changes — not on every keystroke
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultAddress, businessName]);
+
+  async function handleSearch(e: React.FormEvent) {
+    e.preventDefault();
+    runSearch(address, radius, cuisine);
   }
 
   const me = { name: businessName, rating: myRating, reviewCount: myReviewCount };
