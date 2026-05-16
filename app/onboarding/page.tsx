@@ -34,6 +34,7 @@ export default function OnboardingPage() {
   const [mode, setMode] = useState<"single" | "chain" | null>(null);
   const [chainName, setChainName] = useState("");
   const [query, setQuery] = useState("");
+  const [country, setCountry] = useState("at");
   const [results, setResults] = useState<Place[]>([]);
   const [selected, setSelected] = useState<Place | null>(null);
   const [businesses, setBusinesses] = useState<SavedBusiness[]>([]);
@@ -53,7 +54,7 @@ export default function OnboardingPage() {
     searchTimeout.current = setTimeout(async () => {
       setSearching(true);
       try {
-        const res = await fetch(`/api/search-places?query=${encodeURIComponent(query)}`);
+        const res = await fetch(`/api/search-places?query=${encodeURIComponent(query)}&country=${country}`);
         const data = await res.json();
         setResults(data.results || []);
       } catch {
@@ -165,7 +166,26 @@ export default function OnboardingPage() {
       <button onClick={() => { if (mode === "chain" && businesses.length === 0) setChainName(""); else setStep("mode"); }} style={backBtn}>← Zurück</button>
       <h1 style={headingStyle}>{mode === "chain" ? `Standort suchen — ${chainName}` : "Finde dein Restaurant / Geschäft"}</h1>
       <p style={subStyle}>Gib den Namen und die Stadt ein. Wir zeigen dir die echten Einträge aus Google Maps.</p>
-      <div style={{ position: "relative", marginTop: 24 }}>
+
+      {/* Country filter */}
+      <div style={{ display: "flex", gap: 6, marginTop: 20 }}>
+        {[
+          { code: "at", flag: "🇦🇹", label: "Österreich" },
+          { code: "de", flag: "🇩🇪", label: "Deutschland" },
+          { code: "ch", flag: "🇨🇭", label: "Schweiz" },
+        ].map((c) => (
+          <button key={c.code} onClick={() => { setCountry(c.code); setResults([]); }}
+            style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", borderRadius: 20, border: "1.5px solid", fontFamily: "inherit", cursor: "pointer", fontSize: 13, fontWeight: 600, transition: "all 0.15s",
+              backgroundColor: country === c.code ? "#eef2ff" : "#f8fafc",
+              borderColor: country === c.code ? "#6366f1" : "#e2e8f0",
+              color: country === c.code ? "#4338ca" : "#64748b",
+            }}>
+            <span>{c.flag}</span> {c.label}
+          </button>
+        ))}
+      </div>
+
+      <div style={{ position: "relative", marginTop: 12 }}>
         <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="z.B. Mario's Pizza Wien, Café Hawelka..."
           style={{ ...inputStyle, fontSize: 15, paddingLeft: 44 }} autoFocus />
         <span style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", fontSize: 18 }}>🔍</span>

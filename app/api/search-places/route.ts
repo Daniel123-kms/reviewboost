@@ -1,25 +1,31 @@
 import { NextResponse } from 'next/server'
 
+const COUNTRY_CONFIG: Record<string, { region: string; lat: number; lng: number; radius: number; label: string }> = {
+  at: { region: "at", lat: 47.8095, lng: 13.0550, radius: 250000, label: "Österreich" },
+  de: { region: "de", lat: 51.1657, lng: 10.4515, radius: 400000, label: "Deutschland" },
+  ch: { region: "ch", lat: 46.8182, lng: 8.2275, radius: 200000, label: "Schweiz" },
+}
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const query = searchParams.get('query')
+  const country = searchParams.get('country') || 'at'
 
   if (!query || query.length < 2) {
     return NextResponse.json({ results: [] })
   }
 
   const apiKey = process.env.GOOGLE_PLACES_API_KEY
-
   if (!apiKey || apiKey === 'your_google_places_api_key') {
-    // No API key configured — return empty so onboarding falls back to manual entry
     return NextResponse.json({ results: [] })
   }
 
+  const config = COUNTRY_CONFIG[country] ?? COUNTRY_CONFIG.at
+  const locationBias = `circle:${config.radius}@${config.lat},${config.lng}`
+
   try {
-    // Text Search — biased to Austria (DACH), center of Vienna as location bias
-    const locationBias = "circle:200000@48.2082,16.3738"; // 200km radius around Vienna
     const searchRes = await fetch(
-      `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(query)}&language=de&region=at&locationbias=${locationBias}&key=${apiKey}`,
+      `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(query)}&language=de&region=${config.region}&locationbias=${locationBias}&key=${apiKey}`,
       { next: { revalidate: 0 } }
     )
     const searchData = await searchRes.json()
@@ -29,13 +35,9 @@ export async function GET(request: Request) {
     }
 
     const places = (searchData.results || []).slice(0, 6).map((place: {
-      place_id: string;
-      name: string;
-      formatted_address: string;
-      rating?: number;
-      user_ratings_total?: number;
-      photos?: Array<{ photo_reference: string }>;
-      types?: string[];
+      place_id: string; name: string; formatted_address: string;
+      rating?: number; user_ratings_total?: number;
+      photos?: Array<{ photo_reference: string }>; types?: string[];
     }) => ({
       place_id: place.place_id,
       name: place.name,
