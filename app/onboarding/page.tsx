@@ -185,10 +185,14 @@ export default function OnboardingPage() {
           <p style={{ fontSize: 14, color: "#64748b", margin: 0 }}>Keine Ergebnisse.<br />Versuch es mit einem anderen Namen oder der genauen Adresse.</p>
         </div>
       )}
-      <div style={{ marginTop: 16, textAlign: "center" }}>
-        <span onClick={() => setStep("manual")} style={{ fontSize: 13, color: "#6366f1", cursor: "pointer" }}>
-          Betrieb nicht gefunden? Manuell eingeben →
-        </span>
+      <div style={{ marginTop: 16, padding: "14px 18px", backgroundColor: "#f5f3ff", borderRadius: 12, border: "1.5px solid #e0e7ff", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+        <div>
+          <p style={{ fontSize: 13, fontWeight: 700, color: "#4338ca", margin: "0 0 2px" }}>Betrieb nicht in der Liste?</p>
+          <p style={{ fontSize: 12, color: "#6366f1", margin: 0 }}>Kein Problem — du kannst alles auch manuell eingeben.</p>
+        </div>
+        <button onClick={() => setStep("manual")} style={{ padding: "9px 16px", backgroundColor: "#6366f1", color: "#fff", border: "none", borderRadius: 9, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>
+          Manuell eingeben →
+        </button>
       </div>
       {mode === "chain" && businesses.length > 0 && (
         <div style={{ marginTop: 20, padding: "16px", backgroundColor: "#f0fdf4", borderRadius: 12, border: "1.5px solid #bbf7d0" }}>

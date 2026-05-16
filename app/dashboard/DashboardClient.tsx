@@ -389,28 +389,35 @@ export default function DashboardClient({ user, initialReviews, hasBusinesses = 
         )}
 
         {hasBusinesses && initialReviews.length === 0 && (
-          <div style={{ margin: "12px 28px 0", padding: "14px 18px", backgroundColor: "#f0fdf4", border: "1.5px solid #bbf7d0", borderRadius: 12, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-            <span style={{ fontSize: 20 }}>🌱</span>
-            <p style={{ fontSize: 13, color: "#166534", margin: 0, flex: 1 }}>Noch keine Bewertungen? Lade Demo-Daten zum Testen.</p>
-            <button
-              disabled={demoLoading}
-              onClick={async () => {
-                setDemoLoading(true);
-                try {
-                  await fetch("/api/seed-demo", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ userId: user.id }),
-                  });
-                  window.location.reload();
-                } catch {
-                  setDemoLoading(false);
-                }
-              }}
-              style={{ padding: "8px 16px", backgroundColor: "#22c55e", color: "#fff", border: "none", borderRadius: 9, fontSize: 12, fontWeight: 700, cursor: demoLoading ? "wait" : "pointer", fontFamily: "inherit", opacity: demoLoading ? 0.7 : 1, whiteSpace: "nowrap" }}
-            >
-              {demoLoading ? "Lädt..." : "Demo-Daten laden"}
-            </button>
+          <div style={{ margin: "12px 28px 0", padding: "16px 20px", backgroundColor: "#f0f9ff", border: "1.5px solid #bae6fd", borderRadius: 12 }}>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 20 }}>💡</span>
+              <div style={{ flex: 1 }}>
+                <p style={{ fontSize: 13, fontWeight: 700, color: "#0369a1", margin: "0 0 4px" }}>Noch keine Bewertungen — so geht es los:</p>
+                <p style={{ fontSize: 12, color: "#0284c7", margin: "0 0 10px", lineHeight: 1.6 }}>
+                  Füge Bewertungen über <strong>Einstellungen → Google-Bewertungen importieren</strong> hinzu, oder trage sie manuell im Bereich <strong>Bewertungen</strong> ein.
+                </p>
+                <details style={{ fontSize: 12, color: "#0369a1" }}>
+                  <summary style={{ cursor: "pointer", fontWeight: 600 }}>🧪 Nur zum Testen: Demo-Daten laden</summary>
+                  <div style={{ marginTop: 10, padding: "10px 14px", backgroundColor: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 8 }}>
+                    <p style={{ fontSize: 12, color: "#c2410c", margin: "0 0 8px" }}>⚠️ Lädt Beispieldaten eines fiktiven Restaurants — nur für interne Tests, nicht für echte Betriebe gedacht.</p>
+                    <button
+                      disabled={demoLoading}
+                      onClick={async () => {
+                        setDemoLoading(true);
+                        try {
+                          await fetch("/api/seed-demo", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId: user.id }) });
+                          window.location.reload();
+                        } catch { setDemoLoading(false); }
+                      }}
+                      style={{ padding: "7px 14px", backgroundColor: "#f97316", color: "#fff", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: demoLoading ? "wait" : "pointer", fontFamily: "inherit", opacity: demoLoading ? 0.7 : 1 }}
+                    >
+                      {demoLoading ? "Lädt..." : "Demo-Daten laden"}
+                    </button>
+                  </div>
+                </details>
+              </div>
+            </div>
           </div>
         )}
 
