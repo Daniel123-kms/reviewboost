@@ -82,6 +82,7 @@ export default function ReviewManagementSection({
   const [filterPlatform, setFilterPlatform] = useState<string | null>(null);
   const [filterRating, setFilterRating] = useState<number | null>(null);
   const [filterStatus, setFilterStatus] = useState<"all" | "pending" | "responded">("all");
+  const [filterDateRange, setFilterDateRange] = useState<"all" | "30d" | "90d" | "180d" | "365d">("all")
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<"date" | "urgency" | "rating">("urgency");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -107,11 +108,17 @@ export default function ReviewManagementSection({
       const q = search.toLowerCase();
       res = res.filter((r) => r.author_name.toLowerCase().includes(q) || r.content.toLowerCase().includes(q));
     }
+    if (filterDateRange !== "all") {
+      const cutoff = new Date()
+      const days = filterDateRange === "30d" ? 30 : filterDateRange === "90d" ? 90 : filterDateRange === "180d" ? 180 : 365
+      cutoff.setDate(cutoff.getDate() - days)
+      res = res.filter((r) => new Date(r.created_at) >= cutoff)
+    }
     if (sortBy === "urgency") res.sort((a, b) => urgencyScore(b) - urgencyScore(a));
     else if (sortBy === "date") res.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     else if (sortBy === "rating") res.sort((a, b) => a.rating - b.rating);
     return res;
-  }, [reviews, filterPlatform, filterRating, filterStatus, search, sortBy]);
+  }, [reviews, filterPlatform, filterRating, filterStatus, filterDateRange, search, sortBy]);
 
   function toggleSelect(id: string) {
     setSelectedIds((prev) => {
@@ -203,6 +210,32 @@ export default function ReviewManagementSection({
           ))}
         </div>
 
+        {/* Date range filter */}
+        <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+          <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 600, marginRight: 2 }}>Zeitraum:</span>
+          {([
+            { id: "all", label: "Alle" },
+            { id: "30d", label: "30 Tage" },
+            { id: "90d", label: "3 Monate" },
+            { id: "180d", label: "6 Monate" },
+            { id: "365d", label: "12 Monate" },
+          ] as const).map((opt) => (
+            <button
+              key={opt.id}
+              onClick={() => setFilterDateRange(opt.id)}
+              style={{
+                padding: "5px 9px", borderRadius: 8,
+                border: `1.5px solid ${filterDateRange === opt.id ? "#6366f1" : "#e2e8f0"}`,
+                backgroundColor: filterDateRange === opt.id ? "#eef2ff" : "#f8fafc",
+                color: filterDateRange === opt.id ? "#4338ca" : "#64748b",
+                fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
+              }}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
         {/* Status */}
         <div style={{ display: "flex", gap: 0, borderRadius: 9, overflow: "hidden", border: "1.5px solid #e2e8f0" }}>
           {([["all", "Alle"], ["pending", "Ausstehend"], ["responded", "Beantwortet"]] as const).map(([val, label]) => (
@@ -223,8 +256,8 @@ export default function ReviewManagementSection({
         </select>
 
         {/* Clear */}
-        {(filterPlatform || filterRating !== null || filterStatus !== "all" || search) && (
-          <button onClick={() => { setFilterPlatform(null); setFilterRating(null); setFilterStatus("all"); setSearch(""); }} style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #fecaca", backgroundColor: "#fef2f2", color: "#dc2626", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
+        {(filterPlatform || filterRating !== null || filterStatus !== "all" || filterDateRange !== "all" || search) && (
+          <button onClick={() => { setFilterPlatform(null); setFilterRating(null); setFilterStatus("all"); setFilterDateRange("all"); setSearch(""); }} style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #fecaca", backgroundColor: "#fef2f2", color: "#dc2626", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
             ✕ Filter zurücksetzen
           </button>
         )}

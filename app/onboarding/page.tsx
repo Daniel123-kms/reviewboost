@@ -18,7 +18,13 @@ type Place = {
 
 type SavedBusiness = Place & { chain_name?: string };
 
-type Step = "mode" | "search" | "confirm" | "manual" | "goals" | "review-link" | "chain-add" | "done";
+/** A grouped set of results sharing the same brand name */
+type BrandGroup = {
+  brandName: string;
+  locations: Place[];
+};
+
+type Step = "search" | "confirm" | "manual" | "goals" | "review-link" | "done";
 
 const GOALS = [
   { id: "more-reviews", emoji: "📈", label: "Mehr Bewertungen sammeln", desc: "Gezielt mehr Kunden zur Bewertung einladen" },
@@ -28,10 +34,41 @@ const GOALS = [
   { id: "overview", emoji: "📊", label: "Alle Plattformen im Blick", desc: "Google, Tripadvisor & Co. zentral verwalten" },
 ];
 
+/** Extract the first 2 words of a name for brand-matching */
+function brandKey(name: string): string {
+  return name.trim().split(/\s+/).slice(0, 2).join(" ").toLowerCase();
+}
+
+/** Group search results by shared brand name (first 2 words match) */
+function groupResults(places: Place[]): { singles: Place[]; brands: BrandGroup[] } {
+  const keyMap = new Map<string, Place[]>();
+  for (const place of places) {
+    const key = brandKey(place.name);
+    if (!keyMap.has(key)) keyMap.set(key, []);
+    keyMap.get(key)!.push(place);
+  }
+
+  const singles: Place[] = [];
+  const brands: BrandGroup[] = [];
+
+  for (const [, group] of keyMap) {
+    if (group.length === 1) {
+      singles.push(group[0]);
+    } else {
+      // Use the shortest name as the brand name (most likely the base)
+      const brandName = group.reduce((a, b) => (a.name.length <= b.name.length ? a : b)).name
+        .split(/\s+/).slice(0, 2).join(" ");
+      brands.push({ brandName, locations: group });
+    }
+  }
+
+  return { singles, brands };
+}
+
 export default function OnboardingPage() {
   const router = useRouter();
-  const [step, setStep] = useState<Step>("mode");
-  const [mode, setMode] = useState<"single" | "chain" | null>(null);
+  const [step, setStep] = useState<Step>("search");
+  const [mode, setMode] = useState<"single" | "chain">("single");
   const [chainName, setChainName] = useState("");
   const [query, setQuery] = useState("");
   const [country, setCountry] = useState("at");
@@ -46,6 +83,8 @@ export default function OnboardingPage() {
   const [manualReviewUrl, setManualReviewUrl] = useState("");
   const [selectedGoals, setSelectedGoals] = useState<Set<string>>(new Set());
   const [reviewLink, setReviewLink] = useState("");
+  // Multi-select state for brand groups
+  const [checkedLocations, setCheckedLocations] = useState<Set<string>>(new Set());
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -62,7 +101,7 @@ export default function OnboardingPage() {
       }
       setSearching(false);
     }, 500);
-  }, [query]);
+  }, [query, country]);
 
   function toggleGoal(id: string) {
     setSelectedGoals((prev) => {
@@ -99,6 +138,31 @@ export default function OnboardingPage() {
     setStep("goals");
   }
 
+  /** Save all checked locations from a brand group */
+  async function handleChainConfirm(group: BrandGroup) {
+    if (checkedLocations.size === 0) return;
+    setSaving(true);
+    setError(null);
+    const toSave = group.locations.filter((l) => checkedLocations.has(l.place_id));
+    let allOk = true;
+    const saved: SavedBusiness[] = [];
+    for (const place of toSave) {
+      const business: SavedBusiness = { ...place, chain_name: group.brandName };
+      const ok = await saveBusiness(business);
+      if (!ok) { allOk = false; break; }
+      saved.push(business);
+    }
+    if (!allOk) { setError("Fehler beim Speichern. Bitte versuche es erneut."); setSaving(false); return; }
+    setBusinesses((prev) => [...prev, ...saved]);
+    setMode("chain");
+    setChainName(group.brandName);
+    // Use the first saved location's review URL for the link step
+    setSelected(saved[0]);
+    setReviewLink(saved[0].google_review_url || "");
+    setSaving(false);
+    setStep("goals");
+  }
+
   async function handleFinish() {
     router.push("/dashboard");
     router.refresh();
@@ -127,44 +191,16 @@ export default function OnboardingPage() {
   }
 
   const progressMap: Record<Step, number> = {
-    "mode": 12, "search": 30, "confirm": 48, "manual": 48, "goals": 65, "review-link": 82, "chain-add": 82, "done": 100,
+    "search": 30, "confirm": 48, "manual": 48, "goals": 65, "review-link": 82, "done": 100,
   };
   const progress = progressMap[step] ?? 50;
 
-  /* ── STEP: MODE ── */
-  if (step === "mode") return (
-    <PageShell progress={progress}>
-      <h1 style={headingStyle}>Willkommen! Lass uns starten 🚀</h1>
-      <p style={subStyle}>Was möchtest du bei ReviewBoost registrieren?</p>
-      <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 32 }}>
-        <ModeCard emoji="🏪" title="Einzelnes Restaurant / Geschäft" desc="Du hast einen Standort und möchtest diesen verwalten."
-          onClick={() => { setMode("single"); setStep("search"); }} />
-        <ModeCard emoji="🏢" title="Kette / Mehrere Standorte" desc="Du betreibst mehrere Filialen unter einem gemeinsamen Namen."
-          onClick={() => { setMode("chain"); setStep("search"); }} highlight />
-      </div>
-    </PageShell>
-  );
-
-  /* ── STEP: CHAIN NAME ── */
-  if (step === "search" && mode === "chain" && !chainName) return (
-    <PageShell progress={progress}>
-      <button onClick={() => setStep("mode")} style={backBtn}>← Zurück</button>
-      <h1 style={headingStyle}>Wie heißt deine Kette?</h1>
-      <p style={subStyle}>Der Name unter dem alle Filialen zusammengefasst werden.</p>
-      <input value={chainName} onChange={(e) => setChainName(e.target.value)} placeholder="z.B. Burger Palace, Pizza Express..."
-        style={{ ...inputStyle, marginTop: 24, fontSize: 16 }} autoFocus />
-      <button disabled={chainName.trim().length < 2} onClick={() => setStep("search")}
-        style={{ ...primaryBtn, marginTop: 16, width: "100%", opacity: chainName.trim().length < 2 ? 0.5 : 1 }}>
-        Weiter → Standort suchen
-      </button>
-    </PageShell>
-  );
+  const { singles, brands } = groupResults(results);
 
   /* ── STEP: SEARCH ── */
   if (step === "search") return (
     <PageShell progress={progress}>
-      <button onClick={() => { if (mode === "chain" && businesses.length === 0) setChainName(""); else setStep("mode"); }} style={backBtn}>← Zurück</button>
-      <h1 style={headingStyle}>{mode === "chain" ? `Standort suchen — ${chainName}` : "Finde dein Restaurant / Geschäft"}</h1>
+      <h1 style={headingStyle}>Finde dein Restaurant / Geschäft</h1>
       <p style={subStyle}>Gib den Namen und die Stadt ein. Wir zeigen dir die echten Einträge aus Google Maps.</p>
 
       {/* Country filter */}
@@ -190,21 +226,43 @@ export default function OnboardingPage() {
           style={{ ...inputStyle, fontSize: 15, paddingLeft: 44 }} autoFocus />
         <span style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", fontSize: 18 }}>🔍</span>
       </div>
+
       {searching && <div style={{ textAlign: "center", padding: "24px", color: "#94a3b8", fontSize: 14 }}>Suche läuft...</div>}
+
       {!searching && results.length > 0 && (
         <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 10 }}>
           <p style={{ fontSize: 13, color: "#94a3b8", margin: "0 0 4px" }}>{results.length} Ergebnisse — klick auf das richtige:</p>
-          {results.map((place) => (
-            <PlaceCard key={place.place_id} place={place} onSelect={() => { setSelected(place); setStep("confirm"); }} />
+
+          {/* Brand groups (chain results) */}
+          {brands.map((group) => (
+            <BrandCard
+              key={group.brandName}
+              group={group}
+              checkedLocations={checkedLocations}
+              setCheckedLocations={setCheckedLocations}
+              onConfirm={() => handleChainConfirm(group)}
+              saving={saving}
+            />
+          ))}
+
+          {/* Individual results */}
+          {singles.map((place) => (
+            <PlaceCard key={place.place_id} place={place} onSelect={() => {
+              setSelected(place);
+              setMode("single");
+              setStep("confirm");
+            }} />
           ))}
         </div>
       )}
+
       {!searching && query.length >= 2 && results.length === 0 && (
         <div style={{ textAlign: "center", padding: "32px", marginTop: 16, backgroundColor: "#f8fafc", borderRadius: 12, border: "2px dashed #e2e8f0" }}>
           <p style={{ fontSize: 32, margin: "0 0 8px" }}>😕</p>
           <p style={{ fontSize: 14, color: "#64748b", margin: 0 }}>Keine Ergebnisse.<br />Versuch es mit einem anderen Namen oder der genauen Adresse.</p>
         </div>
       )}
+
       <div style={{ marginTop: 16, padding: "14px 18px", backgroundColor: "#f5f3ff", borderRadius: 12, border: "1.5px solid #e0e7ff", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
         <div>
           <p style={{ fontSize: 13, fontWeight: 700, color: "#4338ca", margin: "0 0 2px" }}>Betrieb nicht in der Liste?</p>
@@ -214,12 +272,6 @@ export default function OnboardingPage() {
           Manuell eingeben →
         </button>
       </div>
-      {mode === "chain" && businesses.length > 0 && (
-        <div style={{ marginTop: 20, padding: "16px", backgroundColor: "#f0fdf4", borderRadius: 12, border: "1.5px solid #bbf7d0" }}>
-          <p style={{ fontSize: 13, fontWeight: 700, color: "#15803d", margin: "0 0 8px" }}>✅ Bereits hinzugefügt ({businesses.length}):</p>
-          {businesses.map((b, i) => <p key={i} style={{ fontSize: 13, color: "#374151", margin: "2px 0" }}>• {b.name} — {b.address}</p>)}
-        </div>
-      )}
     </PageShell>
   );
 
@@ -244,11 +296,6 @@ export default function OnboardingPage() {
             )}
           </div>
         </div>
-        {mode === "chain" && chainName && (
-          <div style={{ marginTop: 14, padding: "10px 14px", backgroundColor: "#ede9fe", borderRadius: 8 }}>
-            <span style={{ fontSize: 13, fontWeight: 600, color: "#7c3aed" }}>🏢 Kette: {chainName}</span>
-          </div>
-        )}
       </div>
       {error && <div style={{ marginTop: 16, padding: "12px 16px", backgroundColor: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, color: "#dc2626", fontSize: 14 }}>{error}</div>}
       <div style={{ display: "flex", gap: 12, marginTop: 24 }}>
@@ -398,39 +445,11 @@ export default function OnboardingPage() {
       </div>
 
       <button
-        onClick={() => setStep(mode === "chain" ? "chain-add" : "done")}
+        onClick={() => setStep("done")}
         style={{ ...primaryBtn, width: "100%", marginTop: 24 }}
       >
-        {mode === "chain" ? "Weiter → Weitere Standorte" : "Fertig → Dashboard öffnen 🎉"}
+        Fertig → Dashboard öffnen 🎉
       </button>
-    </PageShell>
-  );
-
-  /* ── STEP: CHAIN ADD MORE ── */
-  if (step === "chain-add") return (
-    <PageShell progress={progress}>
-      <h1 style={headingStyle}>Standort hinzugefügt! 🎉</h1>
-      <p style={subStyle}>Möchtest du weitere Standorte deiner Kette <strong>{chainName}</strong> registrieren?</p>
-      <div style={{ marginTop: 20, padding: "16px", backgroundColor: "#f0fdf4", borderRadius: 12, border: "1.5px solid #bbf7d0", marginBottom: 24 }}>
-        <p style={{ fontSize: 13, fontWeight: 700, color: "#15803d", margin: "0 0 8px" }}>✅ Registrierte Standorte ({businesses.length}):</p>
-        {businesses.map((b, i) => (
-          <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: i < businesses.length - 1 ? "1px solid #dcfce7" : "none" }}>
-            <span style={{ fontSize: 12, color: "#16a34a" }}>✓</span>
-            <div>
-              <p style={{ fontSize: 14, fontWeight: 600, color: "#0f172a", margin: 0 }}>{b.name}</p>
-              <p style={{ fontSize: 12, color: "#64748b", margin: 0 }}>{b.address}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <button onClick={() => { setStep("search"); setSelected(null); setQuery(""); setResults([]); }} style={{ ...primaryBtn, width: "100%" }}>
-          + Weiteren Standort hinzufügen
-        </button>
-        <button onClick={handleFinish} style={{ ...secondaryBtn, width: "100%" }}>
-          Fertig — zum Dashboard →
-        </button>
-      </div>
     </PageShell>
   );
 
@@ -441,16 +460,31 @@ export default function OnboardingPage() {
         <div style={{ fontSize: 64, marginBottom: 20 }}>🎉</div>
         <h1 style={{ ...headingStyle, textAlign: "center" }}>Alles bereit!</h1>
         <p style={{ ...subStyle, textAlign: "center", marginBottom: 28 }}>
-          Dein Betrieb ist registriert und deine Ziele sind gesetzt. Du kannst jetzt Bewertungen sammeln!
+          {businesses.length > 1
+            ? `${businesses.length} Standorte registriert und deine Ziele sind gesetzt. Du kannst jetzt Bewertungen sammeln!`
+            : "Dein Betrieb ist registriert und deine Ziele sind gesetzt. Du kannst jetzt Bewertungen sammeln!"}
         </p>
 
-        {businesses[0] && (
+        {mode === "chain" && businesses.length > 1 ? (
+          <div style={{ backgroundColor: "#f5f3ff", border: "1.5px solid #c4b5fd", borderRadius: 14, padding: 20, marginBottom: 20, textAlign: "left" }}>
+            <p style={{ fontSize: 13, fontWeight: 700, color: "#6366f1", margin: "0 0 8px" }}>🏢 Kette: {chainName}</p>
+            {businesses.map((b, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", borderBottom: i < businesses.length - 1 ? "1px solid #ede9fe" : "none" }}>
+                <span style={{ color: "#6366f1", fontSize: 12 }}>✓</span>
+                <div>
+                  <p style={{ fontSize: 14, fontWeight: 600, color: "#0f172a", margin: 0 }}>{b.name}</p>
+                  <p style={{ fontSize: 12, color: "#64748b", margin: 0 }}>{b.address}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : businesses[0] ? (
           <div style={{ backgroundColor: "#f5f3ff", border: "1.5px solid #e0e7ff", borderRadius: 14, padding: 20, marginBottom: 20, textAlign: "left" }}>
             <p style={{ fontSize: 13, fontWeight: 700, color: "#6366f1", margin: "0 0 6px" }}>✅ Registriert:</p>
             <p style={{ fontSize: 16, fontWeight: 800, color: "#0f172a", margin: "0 0 4px" }}>{businesses[0].name}</p>
             <p style={{ fontSize: 13, color: "#64748b", margin: 0 }}>📍 {businesses[0].address}</p>
           </div>
-        )}
+        ) : null}
 
         <div style={{ backgroundColor: "#f0fdf4", border: "1.5px solid #bbf7d0", borderRadius: 14, padding: 16, marginBottom: 24, textAlign: "left" }}>
           <p style={{ fontSize: 13, fontWeight: 700, color: "#15803d", margin: "0 0 8px" }}>🎯 Deine Ziele:</p>
@@ -470,6 +504,116 @@ export default function OnboardingPage() {
   );
 
   return null;
+}
+
+/* ── BRAND CARD (chain/multi-location) ── */
+function BrandCard({
+  group,
+  checkedLocations,
+  setCheckedLocations,
+  onConfirm,
+  saving,
+}: {
+  group: BrandGroup;
+  checkedLocations: Set<string>;
+  setCheckedLocations: React.Dispatch<React.SetStateAction<Set<string>>>;
+  onConfirm: () => void;
+  saving: boolean;
+}) {
+  const groupChecked = group.locations.filter((l) => checkedLocations.has(l.place_id));
+  const allSelected = groupChecked.length === group.locations.length;
+
+  function toggleLocation(placeId: string) {
+    setCheckedLocations((prev) => {
+      const next = new Set(prev);
+      if (next.has(placeId)) next.delete(placeId);
+      else next.add(placeId);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    setCheckedLocations((prev) => {
+      const next = new Set(prev);
+      if (allSelected) {
+        group.locations.forEach((l) => next.delete(l.place_id));
+      } else {
+        group.locations.forEach((l) => next.add(l.place_id));
+      }
+      return next;
+    });
+  }
+
+  return (
+    <div style={{ backgroundColor: "#f5f3ff", border: "2px solid #c4b5fd", borderRadius: 14, padding: "18px 20px" }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontSize: 22 }}>🏢</span>
+          <div>
+            <p style={{ fontSize: 16, fontWeight: 800, color: "#0f172a", margin: 0 }}>{group.brandName}</p>
+            <p style={{ fontSize: 12, color: "#6366f1", margin: "2px 0 0" }}>{group.locations.length} Standorte gefunden</p>
+          </div>
+        </div>
+        <span style={{ fontSize: 11, fontWeight: 700, color: "#6366f1", backgroundColor: "#ede9fe", padding: "4px 10px", borderRadius: 20, letterSpacing: "0.5px" }}>
+          KETTE
+        </span>
+      </div>
+
+      {/* Location checkboxes */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
+        {group.locations.map((loc) => {
+          const checked = checkedLocations.has(loc.place_id);
+          return (
+            <label key={loc.place_id} style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", padding: "8px 10px", borderRadius: 8, backgroundColor: checked ? "#ede9fe" : "#ffffff", border: `1.5px solid ${checked ? "#a5b4fc" : "#e2e8f0"}`, transition: "all 0.15s" }}>
+              {/* Custom checkbox */}
+              <div
+                onClick={() => toggleLocation(loc.place_id)}
+                style={{
+                  width: 18, height: 18, borderRadius: 4, flexShrink: 0, cursor: "pointer",
+                  backgroundColor: checked ? "#6366f1" : "#ffffff",
+                  border: `2px solid ${checked ? "#6366f1" : "#cbd5e1"}`,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  transition: "all 0.15s",
+                }}
+              >
+                {checked && <span style={{ color: "#fff", fontSize: 11, fontWeight: 700, lineHeight: 1 }}>✓</span>}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }} onClick={() => toggleLocation(loc.place_id)}>
+                <p style={{ fontSize: 14, fontWeight: 600, color: "#0f172a", margin: "0 0 2px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{loc.name}</p>
+                <p style={{ fontSize: 12, color: "#64748b", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>📍 {loc.address}</p>
+              </div>
+              {loc.rating && (
+                <span style={{ fontSize: 11, color: "#f59e0b", fontWeight: 700, flexShrink: 0 }}>★ {loc.rating}</span>
+              )}
+            </label>
+          );
+        })}
+      </div>
+
+      {/* Footer actions */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+        <button
+          onClick={toggleAll}
+          style={{ background: "none", border: "none", color: "#6366f1", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", padding: 0, textDecoration: "underline" }}
+        >
+          {allSelected ? "Alle abwählen" : "Alle auswählen"}
+        </button>
+        <button
+          onClick={onConfirm}
+          disabled={groupChecked.length === 0 || saving}
+          style={{
+            ...primaryBtn,
+            fontSize: 13, padding: "9px 16px",
+            opacity: (groupChecked.length === 0 || saving) ? 0.5 : 1,
+            cursor: (groupChecked.length === 0 || saving) ? "not-allowed" : "pointer",
+          }}
+        >
+          {saving ? "Speichere..." : `Ausgewählte hinzufügen (${groupChecked.length}) →`}
+        </button>
+      </div>
+    </div>
+  );
 }
 
 /* ── PLACE CARD ── */
@@ -497,26 +641,9 @@ function PlaceCard({ place, onSelect }: { place: Place; onSelect: () => void }) 
   );
 }
 
-/* ── MODE CARD ── */
-function ModeCard({ emoji, title, desc, onClick, highlight }: { emoji: string; title: string; desc: string; onClick: () => void; highlight?: boolean }) {
-  const [hovered, setHovered] = useState(false);
-  return (
-    <button onClick={onClick} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
-      style={{ display: "flex", gap: 16, alignItems: "center", padding: "20px 24px", backgroundColor: highlight ? (hovered ? "#f5f3ff" : "#faf5ff") : (hovered ? "#f8fafc" : "#ffffff"), border: `2px solid ${highlight ? (hovered ? "#6366f1" : "#c4b5fd") : (hovered ? "#6366f1" : "#e2e8f0")}`, borderRadius: 14, cursor: "pointer", textAlign: "left", width: "100%", transition: "all 0.15s", fontFamily: "inherit", boxShadow: hovered ? "0 4px 16px rgba(99,102,241,0.12)" : "none" }}>
-      <span style={{ fontSize: 36, flexShrink: 0 }}>{emoji}</span>
-      <div style={{ flex: 1 }}>
-        <p style={{ fontSize: 16, fontWeight: 700, color: "#0f172a", margin: "0 0 4px" }}>{title}</p>
-        <p style={{ fontSize: 13, color: "#64748b", margin: 0, lineHeight: 1.5 }}>{desc}</p>
-      </div>
-      <span style={{ fontSize: 20, color: hovered ? "#6366f1" : "#cbd5e1" }}>→</span>
-    </button>
-  );
-}
-
 /* ── PAGE SHELL ── */
 function PageShell({ children, progress }: { children: React.ReactNode; progress: number }) {
   const steps = [
-    { label: "Typ", done: progress >= 30 },
     { label: "Suche", done: progress >= 48 },
     { label: "Bestätigen", done: progress >= 65 },
     { label: "Ziele", done: progress >= 82 },
@@ -538,7 +665,7 @@ function PageShell({ children, progress }: { children: React.ReactNode; progress
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
                 <div style={{
                   width: 28, height: 28, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700,
-                  backgroundColor: s.done ? "#6366f1" : progress > (i * 20) && progress <= ((i + 1) * 20) ? "#ede9fe" : "#e2e8f0",
+                  backgroundColor: s.done ? "#6366f1" : progress > (i * 25) && progress <= ((i + 1) * 25) ? "#ede9fe" : "#e2e8f0",
                   color: s.done ? "#fff" : "#94a3b8",
                   border: `2px solid ${s.done ? "#6366f1" : "#e2e8f0"}`,
                 }}>

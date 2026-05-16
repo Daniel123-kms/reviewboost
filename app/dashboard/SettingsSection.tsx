@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 
-type Business = { id: string; name: string; google_review_url: string | null; address: string | null; logo_url: string | null; brand_color: string | null };
+type Business = { id: string; name: string; place_id: string | null; google_review_url: string | null; address: string | null; logo_url: string | null; brand_color: string | null };
 
 export default function SettingsSection({ userId, userEmail, userName }: { userId: string; userEmail: string; userName: string }) {
   const [businesses, setBusinesses] = useState<Business[]>([]);
@@ -34,11 +34,13 @@ export default function SettingsSection({ userId, userEmail, userName }: { userI
   const [googleApiKey, setGoogleApiKey] = useState("");
   const [savingApiKey, setSavingApiKey] = useState(false);
   const [apiKeySaved, setApiKeySaved] = useState(false);
+  const [syncingBiz, setSyncingBiz] = useState<string | null>(null)
+  const [syncResult, setSyncResult] = useState<{ bizId: string; inserted: number; skipped: number; total: number } | null>(null)
 
   useEffect(() => {
     async function load() {
       const supabase = createClient();
-      const { data } = await supabase.from("businesses").select("id,name,google_review_url,address,logo_url,brand_color").eq("user_id", userId).order("created_at");
+      const { data } = await supabase.from("businesses").select("id,name,place_id,google_review_url,address,logo_url,brand_color").eq("user_id", userId).order("created_at");
       setBusinesses(data || []);
       setLoadingBiz(false);
 
@@ -65,6 +67,30 @@ export default function SettingsSection({ userId, userEmail, userName }: { userI
     setLogoUploaded(bizId);
     setTimeout(() => setLogoUploaded(null), 3000);
     setUploadingLogo(null);
+  }
+
+  async function handleSyncReviews(bizId: string) {
+    setSyncingBiz(bizId)
+    setSyncResult(null)
+    try {
+      const res = await fetch('/api/sync-reviews', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ businessId: bizId }),
+      })
+      const data = await res.json()
+      if (data.error) {
+        alert('Fehler: ' + data.error)
+      } else {
+        setSyncResult({ bizId, inserted: data.inserted, skipped: data.skipped, total: data.total })
+        if (data.inserted > 0) {
+          setTimeout(() => window.location.reload(), 1500)
+        }
+      }
+    } catch {
+      alert('Sync fehlgeschlagen.')
+    }
+    setSyncingBiz(null)
   }
 
   async function handleRemoveLogo(bizId: string) {
@@ -277,6 +303,33 @@ export default function SettingsSection({ userId, userEmail, userName }: { userI
                         </button>
                       </div>
                     </div>
+
+                    {/* Sync Google Reviews */}
+                    {b.place_id && (
+                      <div style={{ borderTop: "1px solid #e8edf3", padding: "14px 18px", backgroundColor: "#fff" }}>
+                        <div style={{ marginTop: 0 }}>
+                          <button
+                            onClick={() => handleSyncReviews(b.id)}
+                            disabled={syncingBiz === b.id}
+                            style={{
+                              padding: '8px 16px', borderRadius: 8, border: 'none',
+                              background: syncingBiz === b.id ? '#a5b4fc' : 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                              color: '#fff', fontSize: 12, fontWeight: 700, cursor: syncingBiz === b.id ? 'not-allowed' : 'pointer',
+                              fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6,
+                            }}
+                          >
+                            {syncingBiz === b.id ? '⏳ Synchronisiere...' : '🔄 Google Bewertungen synchronisieren'}
+                          </button>
+                          {syncResult?.bizId === b.id && (
+                            <div style={{ marginTop: 6, padding: '8px 12px', borderRadius: 8, backgroundColor: syncResult.inserted > 0 ? '#f0fdf4' : '#f8fafc', border: '1px solid', borderColor: syncResult.inserted > 0 ? '#bbf7d0' : '#e2e8f0', fontSize: 12, color: syncResult.inserted > 0 ? '#15803d' : '#64748b' }}>
+                              {syncResult.inserted > 0
+                                ? `✅ ${syncResult.inserted} neue Bewertungen importiert (${syncResult.skipped} bereits vorhanden). Seite wird neu geladen...`
+                                : `ℹ️ Alle ${syncResult.total} Bewertungen bereits vorhanden.`}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
 
                     {/* Logo + Farbe Upload Row */}
                     <div style={{ borderTop: "1px solid #e8edf3", padding: "14px 18px", backgroundColor: "#fff", display: "flex", flexWrap: "wrap", gap: 16, alignItems: "center" }}>

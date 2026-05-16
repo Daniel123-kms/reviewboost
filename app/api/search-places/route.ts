@@ -1,5 +1,18 @@
 import { NextResponse } from 'next/server'
 
+// Country indicators that are NOT DACH – filter these out
+const NON_DACH_PATTERNS = [
+  ', usa', 'united states', ', uk', 'united kingdom', ', australia',
+  ', canada', ', france', ', italy', ', spain', ', netherlands',
+  ', poland', ', hungary', ', czech', ', slovakia', ', belgium',
+  ', sweden', ', denmark', ', norway', ', finland', ', russia',
+  ', china', ', japan', ', brazil', ', mexico', ', india',
+];
+function isNonDach(address: string): boolean {
+  const lc = address.toLowerCase();
+  return NON_DACH_PATTERNS.some((p) => lc.includes(p));
+}
+
 const COUNTRY_CONFIG: Record<string, { region: string; lat: number; lng: number; radius: number; label: string }> = {
   at: { region: "at", lat: 47.8095, lng: 13.0550, radius: 250000, label: "Österreich" },
   de: { region: "de", lat: 51.1657, lng: 10.4515, radius: 400000, label: "Deutschland" },
@@ -34,7 +47,10 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: `Google API Fehler: ${searchData.status}` }, { status: 500 })
     }
 
-    const places = (searchData.results || []).slice(0, 6).map((place: {
+    const places = (searchData.results || [])
+      .filter((place: { formatted_address: string }) => !isNonDach(place.formatted_address))
+      .slice(0, 6)
+      .map((place: {
       place_id: string; name: string; formatted_address: string;
       rating?: number; user_ratings_total?: number;
       photos?: Array<{ photo_reference: string }>; types?: string[];
