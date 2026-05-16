@@ -24,7 +24,7 @@ type BrandGroup = {
   locations: Place[];
 };
 
-type Step = "search" | "confirm" | "manual" | "goals" | "review-link" | "done";
+type Step = "search" | "confirm" | "manual" | "goals" | "review-link" | "syncing" | "done";
 
 const GOALS = [
   { id: "more-reviews", emoji: "📈", label: "Mehr Bewertungen sammeln", desc: "Gezielt mehr Kunden zur Bewertung einladen" },
@@ -85,6 +85,9 @@ export default function OnboardingPage() {
   const [reviewLink, setReviewLink] = useState("");
   // Multi-select state for brand groups
   const [checkedLocations, setCheckedLocations] = useState<Set<string>>(new Set());
+  const [savedBusinessIds, setSavedBusinessIds] = useState<string[]>([]);
+  const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "done" | "error">("idle");
+  const [syncMessage, setSyncMessage] = useState("");
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -112,17 +115,19 @@ export default function OnboardingPage() {
     });
   }
 
-  async function saveBusiness(place: SavedBusiness) {
+  /** Returns the new business ID, or null on error */
+  async function saveBusiness(place: SavedBusiness): Promise<string | null> {
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return false;
-    const { error } = await supabase.from("businesses").insert({
+    if (!user) return null;
+    const { data, error } = await supabase.from("businesses").insert({
       user_id: user.id, name: place.name, address: place.address, place_id: place.place_id,
       google_maps_url: place.google_maps_url, google_review_url: place.google_review_url,
       rating: place.rating, total_ratings: place.total_ratings, photo_url: place.photo_url,
       chain_name: place.chain_name || null, is_chain_member: !!place.chain_name,
-    });
-    return !error;
+    }).select("id").single();
+    if (error || !data) return null;
+    return data.id as string;
   }
 
   async function handleConfirm() {
@@ -130,9 +135,10 @@ export default function OnboardingPage() {
     setSaving(true);
     setError(null);
     const toSave: SavedBusiness = { ...selected, chain_name: mode === "chain" ? chainName : undefined };
-    const ok = await saveBusiness(toSave);
-    if (!ok) { setError("Fehler beim Speichern. Bitte versuche es erneut."); setSaving(false); return; }
+    const newId = await saveBusiness(toSave);
+    if (!newId) { setError("Fehler beim Speichern. Bitte versuche es erneut."); setSaving(false); return; }
     setBusinesses((prev) => [...prev, toSave]);
+    setSavedBusinessIds([newId]);
     setSaving(false);
     setReviewLink(selected.google_review_url || "");
     setStep("goals");
@@ -144,19 +150,19 @@ export default function OnboardingPage() {
     setSaving(true);
     setError(null);
     const toSave = group.locations.filter((l) => checkedLocations.has(l.place_id));
-    let allOk = true;
     const saved: SavedBusiness[] = [];
+    const ids: string[] = [];
     for (const place of toSave) {
       const business: SavedBusiness = { ...place, chain_name: group.brandName };
-      const ok = await saveBusiness(business);
-      if (!ok) { allOk = false; break; }
+      const newId = await saveBusiness(business);
+      if (!newId) { setError("Fehler beim Speichern. Bitte versuche es erneut."); setSaving(false); return; }
       saved.push(business);
+      ids.push(newId);
     }
-    if (!allOk) { setError("Fehler beim Speichern. Bitte versuche es erneut."); setSaving(false); return; }
     setBusinesses((prev) => [...prev, ...saved]);
+    setSavedBusinessIds(ids);
     setMode("chain");
     setChainName(group.brandName);
-    // Use the first saved location's review URL for the link step
     setSelected(saved[0]);
     setReviewLink(saved[0].google_review_url || "");
     setSaving(false);
@@ -191,7 +197,7 @@ export default function OnboardingPage() {
   }
 
   const progressMap: Record<Step, number> = {
-    "search": 30, "confirm": 48, "manual": 48, "goals": 65, "review-link": 82, "done": 100,
+    "search": 30, "confirm": 48, "manual": 48, "goals": 65, "review-link": 82, "syncing": 95, "done": 100,
   };
   const progress = progressMap[step] ?? 50;
 
@@ -445,12 +451,21 @@ export default function OnboardingPage() {
       </div>
 
       <button
-        onClick={() => setStep("done")}
+        onClick={() => setStep("syncing")}
         style={{ ...primaryBtn, width: "100%", marginTop: 24 }}
       >
-        Fertig → Dashboard öffnen 🎉
+        Fertig → Bewertungen laden & Dashboard öffnen 🎉
       </button>
     </PageShell>
+  );
+
+  /* ── STEP: SYNCING (auto-fetch real Google reviews) ── */
+  if (step === "syncing") return (
+    <SyncingStep
+      businessIds={savedBusinessIds}
+      businessNames={businesses.map((b) => b.name)}
+      onDone={() => router.push("/dashboard")}
+    />
   );
 
   /* ── STEP: DONE ── */
@@ -684,6 +699,91 @@ function PageShell({ children, progress }: { children: React.ReactNode; progress
       {/* Card */}
       <div style={{ width: "100%", maxWidth: 580, backgroundColor: "#ffffff", borderRadius: 20, padding: "40px 36px", boxShadow: "0 4px 32px rgba(0,0,0,0.08)", border: "1px solid #f1f5f9" }}>
         {children}
+      </div>
+    </div>
+  );
+}
+
+/* ── SYNCING STEP ── */
+function SyncingStep({ businessIds, businessNames, onDone }: {
+  businessIds: string[];
+  businessNames: string[];
+  onDone: () => void;
+}) {
+  const [status, setStatus] = useState<"syncing" | "done" | "error">("syncing");
+  const [totalImported, setTotalImported] = useState(0);
+  const [currentIdx, setCurrentIdx] = useState(0);
+
+  useEffect(() => {
+    async function run() {
+      if (businessIds.length === 0) {
+        // No place_id — skip sync, go to dashboard
+        setTimeout(onDone, 1200);
+        return;
+      }
+      let imported = 0;
+      for (let i = 0; i < businessIds.length; i++) {
+        setCurrentIdx(i);
+        try {
+          const res = await fetch("/api/sync-reviews", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ businessId: businessIds[i] }),
+          });
+          const data = await res.json();
+          if (data.inserted) imported += data.inserted;
+        } catch { /* silently skip */ }
+      }
+      setTotalImported(imported);
+      setStatus("done");
+      setTimeout(onDone, 2200);
+    }
+    run();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <div style={{ minHeight: "100vh", backgroundColor: "#f8fafc", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "40px 24px", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" }}>
+      <span style={{ fontSize: 26, fontWeight: 800, color: "#1e293b", marginBottom: 48 }}>
+        Review<span style={{ color: "#6366f1" }}>Boost</span>
+      </span>
+
+      <div style={{ width: "100%", maxWidth: 480, backgroundColor: "#ffffff", borderRadius: 24, padding: "48px 40px", boxShadow: "0 8px 48px rgba(0,0,0,0.10)", border: "1px solid #f1f5f9", textAlign: "center" }}>
+        {status === "syncing" ? (
+          <>
+            <div style={{ width: 72, height: 72, borderRadius: "50%", background: "linear-gradient(135deg, #6366f1, #8b5cf6)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32, margin: "0 auto 24px" }}>
+              🔄
+            </div>
+            <h2 style={{ fontSize: 22, fontWeight: 800, color: "#0f172a", margin: "0 0 10px" }}>
+              Lade deine echten Bewertungen…
+            </h2>
+            <p style={{ fontSize: 14, color: "#64748b", margin: "0 0 28px", lineHeight: 1.65 }}>
+              {businessIds.length > 1
+                ? `Synchronisiere ${businessNames[currentIdx] || "Standort"}…`
+                : "Wir holen gerade deine Google-Bewertungen."}
+            </p>
+            {/* Animated dots */}
+            <div style={{ display: "flex", justifyContent: "center", gap: 8 }}>
+              {[0,1,2].map((i) => (
+                <div key={i} style={{ width: 10, height: 10, borderRadius: "50%", backgroundColor: "#6366f1", opacity: 0.8, animation: `bounce 1.2s ease-in-out ${i * 0.2}s infinite` }} />
+              ))}
+            </div>
+            <style>{`@keyframes bounce { 0%,80%,100% { transform: scale(0.8); opacity: 0.4 } 40% { transform: scale(1.2); opacity: 1 } }`}</style>
+          </>
+        ) : (
+          <>
+            <div style={{ fontSize: 64, marginBottom: 20 }}>🎉</div>
+            <h2 style={{ fontSize: 22, fontWeight: 800, color: "#0f172a", margin: "0 0 10px" }}>
+              {totalImported > 0 ? `${totalImported} echte Bewertungen geladen!` : "Alles bereit!"}
+            </h2>
+            <p style={{ fontSize: 14, color: "#64748b", margin: "0 0 6px", lineHeight: 1.65 }}>
+              {totalImported > 0
+                ? "Deine Google-Bewertungen sind jetzt im Dashboard."
+                : "Dein Betrieb ist eingerichtet. Du kannst jetzt loslegen!"}
+            </p>
+            <p style={{ fontSize: 13, color: "#94a3b8", margin: 0 }}>Du wirst weitergeleitet…</p>
+          </>
+        )}
       </div>
     </div>
   );
