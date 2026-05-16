@@ -4,6 +4,13 @@ import { useState } from "react";
 
 type Mode = "tisch" | "einzel" | "whatsapp";
 
+type BusinessEntry = {
+  id: string;
+  name: string;
+  googleReviewUrl: string | null;
+  address: string | null;
+};
+
 const ACCENT = "#6366f1";
 const ACCENT_GRAD = "linear-gradient(135deg, #6366f1, #8b5cf6)";
 
@@ -105,10 +112,10 @@ function FocusInput({
 
 // ─── MODE 1: TISCH-QR ───────────────────────────────────────────────────────
 
-function TischQRMode({ userId, businessName }: { userId: string; businessName: string }) {
+function TischQRMode({ userId, businessName, defaultGoogleLink = "" }: { userId: string; businessName: string; defaultGoogleLink?: string }) {
   const [tableCount, setTableCount] = useState(8);
   const [prefix, setPrefix] = useState("Tisch");
-  const [googleLink, setGoogleLink] = useState("");
+  const [googleLink, setGoogleLink] = useState(defaultGoogleLink);
   const [generated, setGenerated] = useState(false);
 
   const prefixes = ["Tisch", "Table", "Nr.", "Platz"];
@@ -282,8 +289,8 @@ const PLATFORMS = [
   { label: "Facebook", value: "facebook" },
 ];
 
-function EinzelQRMode({ businessName }: { businessName: string }) {
-  const [link, setLink] = useState("");
+function EinzelQRMode({ businessName, defaultLink = "" }: { businessName: string; defaultLink?: string }) {
+  const [link, setLink] = useState(defaultLink);
   const [platform, setPlatform] = useState("google");
   const [cardLabel, setCardLabel] = useState("Jetzt auf Google bewerten");
 
@@ -569,11 +576,18 @@ function WhatsAppQRMode({ userId, businessName }: { userId: string; businessName
 export default function QRStudioSection({
   userId,
   businessName,
+  businesses = [],
 }: {
   userId: string;
   businessName: string;
+  businesses?: BusinessEntry[];
 }) {
   const [mode, setMode] = useState<Mode>("tisch");
+  const [selectedBizIdx, setSelectedBizIdx] = useState(0);
+
+  const selectedBiz = businesses.length > 0 ? businesses[selectedBizIdx] ?? businesses[0] : null;
+  const activeName = selectedBiz?.name ?? businessName;
+  const activeGoogleUrl = selectedBiz?.googleReviewUrl ?? "";
 
   const tabs: { id: Mode; label: string }[] = [
     { id: "tisch", label: "🪑 Tisch-QR" },
@@ -584,7 +598,7 @@ export default function QRStudioSection({
   return (
     <div>
       {/* Header */}
-      <div style={{ marginBottom: 24 }}>
+      <div style={{ marginBottom: 20 }}>
         <h2 style={{ fontSize: 22, fontWeight: 800, color: "#1e1b4b", margin: 0 }}>
           QR-Code Studio
         </h2>
@@ -592,6 +606,39 @@ export default function QRStudioSection({
           Erstellen, anpassen und drucken Sie QR-Codes für Ihr Restaurant.
         </p>
       </div>
+
+      {/* Location selector — only shown when multiple businesses */}
+      {businesses.length > 1 && (
+        <div style={{ marginBottom: 20, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: "#475569", flexShrink: 0 }}>Standort:</span>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {businesses.map((biz, idx) => {
+              const active = idx === selectedBizIdx;
+              return (
+                <button
+                  key={biz.id}
+                  onClick={() => setSelectedBizIdx(idx)}
+                  style={{
+                    padding: "6px 14px",
+                    borderRadius: 8,
+                    border: active ? "2px solid #6366f1" : "1.5px solid #e2e8f0",
+                    backgroundColor: active ? "#eef2ff" : "#f8fafc",
+                    color: active ? "#4338ca" : "#475569",
+                    fontSize: 12,
+                    fontWeight: active ? 700 : 500,
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                    transition: "all 0.15s",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {biz.address ? `${biz.name} — ${biz.address}` : biz.name}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Tab bar */}
       <div
@@ -632,13 +679,13 @@ export default function QRStudioSection({
 
       {/* Mode content */}
       {mode === "tisch" && (
-        <TischQRMode userId={userId} businessName={businessName} />
+        <TischQRMode userId={userId} businessName={activeName} defaultGoogleLink={activeGoogleUrl} />
       )}
       {mode === "einzel" && (
-        <EinzelQRMode businessName={businessName} />
+        <EinzelQRMode businessName={activeName} defaultLink={activeGoogleUrl} />
       )}
       {mode === "whatsapp" && (
-        <WhatsAppQRMode userId={userId} businessName={businessName} />
+        <WhatsAppQRMode userId={userId} businessName={activeName} />
       )}
     </div>
   );

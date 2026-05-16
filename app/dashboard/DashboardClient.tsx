@@ -30,6 +30,16 @@ type BusinessProfile = {
   phone: string | null;
   category: string | null;
 };
+export type Business = {
+  id: string;
+  name: string;
+  logoUrl: string | null;
+  brandColor: string | null;
+  googleReviewUrl: string | null;
+  address: string | null;
+  phone: string | null;
+  category: string | null;
+};
 type Section = "home" | "reviews" | "akquise" | "markt" | "settings";
 type EmailTemplate = "freundlich" | "professionell" | "gastro";
 
@@ -132,8 +142,8 @@ const DELIVERY_COLORS: Record<string, { bg: string; color: string; icon: string 
 };
 
 /* ─── MAIN COMPONENT ─── */
-export default function DashboardClient({ user, initialReviews, hasBusinesses = true, businessProfile }: {
-  user: User; initialReviews: Review[]; hasBusinesses?: boolean; businessProfile?: BusinessProfile | null;
+export default function DashboardClient({ user, initialReviews, hasBusinesses = true, businessProfile, businesses = [] }: {
+  user: User; initialReviews: Review[]; hasBusinesses?: boolean; businessProfile?: BusinessProfile | null; businesses?: Business[];
 }) {
   const router = useRouter();
   const [reviews, setReviews] = useState<Review[]>(initialReviews);
@@ -143,6 +153,13 @@ export default function DashboardClient({ user, initialReviews, hasBusinesses = 
   const [aiReply, setAiReply] = useState<{ reviewId: string; text: string; style: string } | null>(null);
   const [dismissedAlerts, setDismissedAlerts] = useState<Set<string>>(new Set());
   const [demoLoading, setDemoLoading] = useState(false);
+  const [activeBizIndex, setActiveBizIndex] = useState(0);
+
+  // Derive active business profile from activeBizIndex when businesses array is available
+  const activeBusiness: BusinessProfile | null =
+    businesses.length > 0
+      ? businesses[activeBizIndex] ?? businesses[0]
+      : (businessProfile ?? null);
 
   // Sub-tab states
   const [akquiseTab, setAkquiseTab] = useState("qrstudio");
@@ -164,7 +181,7 @@ export default function DashboardClient({ user, initialReviews, hasBusinesses = 
 
   // Auto-check delivery platforms on mount (max 1x per 24h)
   useEffect(() => {
-    if (businessProfile?.name && !deliveryChecked) {
+    if (activeBusiness?.name && !deliveryChecked) {
       const lastCheckKey = `delivery_check_${user.id}`;
       const lastCheck = localStorage.getItem(lastCheckKey);
       const now = Date.now();
@@ -178,8 +195,8 @@ export default function DashboardClient({ user, initialReviews, hasBusinesses = 
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            businessName: businessProfile.name,
-            city: businessProfile.address || "",
+            businessName: activeBusiness.name,
+            city: activeBusiness.address || "",
             userId: user.id,
           }),
         })
@@ -196,7 +213,7 @@ export default function DashboardClient({ user, initialReviews, hasBusinesses = 
         setDeliveryChecked(true);
       }
     }
-  }, [businessProfile?.name, businessProfile?.address, user.id, deliveryChecked]);
+  }, [activeBusiness?.name, activeBusiness?.address, user.id, deliveryChecked]);
 
   async function handleLogout() {
     setLoggingOut(true);
@@ -224,7 +241,7 @@ export default function DashboardClient({ user, initialReviews, hasBusinesses = 
     const res = await fetch("/api/ai-reply", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ reviewContent: review.content, authorName: review.author_name, rating: review.rating, platform: review.platform, style, businessName: businessProfile?.name || user.name }),
+      body: JSON.stringify({ reviewContent: review.content, authorName: review.author_name, rating: review.rating, platform: review.platform, style, businessName: activeBusiness?.name || user.name }),
     });
     const data = await res.json();
     setAiReply({ reviewId: review.id, text: data.reply || "Fehler beim Generieren.", style });
@@ -266,27 +283,56 @@ export default function DashboardClient({ user, initialReviews, hasBusinesses = 
       <aside style={{ width: 200, backgroundColor: "#1e1b4b", position: "fixed", top: 0, left: 0, height: "100vh", display: "flex", flexDirection: "column", zIndex: 100, boxShadow: "2px 0 20px rgba(0,0,0,0.12)" }}>
         {/* Logo / Betriebsprofil */}
         <div style={{ padding: "18px 14px 14px" }}>
-          {businessProfile?.logoUrl ? (
+          {activeBusiness?.logoUrl ? (
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <img src={businessProfile.logoUrl} alt={businessProfile.name} style={{ width: 36, height: 36, borderRadius: 10, objectFit: "cover", border: "2px solid rgba(255,255,255,0.15)", flexShrink: 0 }} />
+              <img src={activeBusiness.logoUrl} alt={activeBusiness.name} style={{ width: 36, height: 36, borderRadius: 10, objectFit: "cover", border: "2px solid rgba(255,255,255,0.15)", flexShrink: 0 }} />
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 12, fontWeight: 800, color: "#ffffff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{businessProfile.name}</div>
+                <div style={{ fontSize: 12, fontWeight: 800, color: "#ffffff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{activeBusiness.name}</div>
                 <div style={{ fontSize: 9, color: "rgba(255,255,255,0.3)", marginTop: 1 }}>ReviewBoost</div>
               </div>
             </div>
-          ) : businessProfile ? (
+          ) : activeBusiness ? (
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ width: 36, height: 36, borderRadius: 10, flexShrink: 0, background: businessProfile.brandColor ? `linear-gradient(135deg, ${businessProfile.brandColor}, ${businessProfile.brandColor}aa)` : "linear-gradient(135deg, #6366f1, #8b5cf6)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, fontWeight: 800, color: "#fff", border: "2px solid rgba(255,255,255,0.15)" }}>
-                {businessProfile.name.charAt(0).toUpperCase()}
+              <div style={{ width: 36, height: 36, borderRadius: 10, flexShrink: 0, background: activeBusiness.brandColor ? `linear-gradient(135deg, ${activeBusiness.brandColor}, ${activeBusiness.brandColor}aa)` : "linear-gradient(135deg, #6366f1, #8b5cf6)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, fontWeight: 800, color: "#fff", border: "2px solid rgba(255,255,255,0.15)" }}>
+                {activeBusiness.name.charAt(0).toUpperCase()}
               </div>
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 12, fontWeight: 800, color: "#ffffff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{businessProfile.name}</div>
+                <div style={{ fontSize: 12, fontWeight: 800, color: "#ffffff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{activeBusiness.name}</div>
                 <div style={{ fontSize: 9, color: "rgba(255,255,255,0.3)", marginTop: 1 }}>ReviewBoost</div>
               </div>
             </div>
           ) : (
             <div style={{ fontSize: 18, fontWeight: 800, color: "#ffffff", letterSpacing: "-0.5px" }}>
               Review<span style={{ color: "#a5b4fc" }}>Boost</span>
+            </div>
+          )}
+          {/* Location Switcher — shown only when user has multiple businesses */}
+          {businesses.length > 1 && (
+            <div style={{ marginTop: 10 }}>
+              <select
+                value={activeBizIndex}
+                onChange={(e) => setActiveBizIndex(Number(e.target.value))}
+                style={{
+                  width: "100%",
+                  padding: "5px 8px",
+                  borderRadius: 8,
+                  border: "1px solid rgba(255,255,255,0.15)",
+                  backgroundColor: "rgba(255,255,255,0.08)",
+                  color: "#e0e7ff",
+                  fontSize: 11,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  outline: "none",
+                  fontFamily: "inherit",
+                  boxSizing: "border-box",
+                }}
+              >
+                {businesses.map((biz, idx) => (
+                  <option key={biz.id} value={idx} style={{ backgroundColor: "#1e1b4b", color: "#fff" }}>
+                    {biz.address ? `${biz.name} – ${biz.address}` : biz.name}
+                  </option>
+                ))}
+              </select>
             </div>
           )}
         </div>
@@ -567,7 +613,7 @@ export default function DashboardClient({ user, initialReviews, hasBusinesses = 
                 active={akquiseTab}
                 onChange={setAkquiseTab}
               />
-              {akquiseTab === "qrstudio" && <QRStudioSection userId={user.id} businessName={user.name} />}
+              {akquiseTab === "qrstudio" && <QRStudioSection userId={user.id} businessName={activeBusiness?.name || user.name} businesses={businesses} />}
               {akquiseTab === "einladen" && <EinladenSubSection businessName={user.name} />}
               {akquiseTab === "funnel" && <FunnelSection userId={user.id} />}
               {akquiseTab === "print" && <PrintAssetsSection businessName={user.name} userId={user.id} />}
@@ -593,15 +639,16 @@ export default function DashboardClient({ user, initialReviews, hasBusinesses = 
                 <DeliveryPlatformsPanel
                   ratings={deliveryRatings}
                   loading={deliveryLoading}
-                  businessName={businessProfile?.name || user.name}
+                  businessName={activeBusiness?.name || user.name}
                   onRefresh={() => setDeliveryChecked(false)}
                 />
               )}
               {marktTab === "konkurrenz" && (
                 <KonkurrenzRadarSection
-                  businessName={user.name}
+                  businessName={activeBusiness?.name || user.name}
                   myRating={reviews.length > 0 ? parseFloat((reviews.reduce((s, r) => s + r.rating, 0) / reviews.length).toFixed(1)) : 0}
                   myReviewCount={reviews.length}
+                  defaultAddress={activeBusiness?.address || ""}
                 />
               )}
               {marktTab === "analytics" && <AnalyticsSection reviews={reviews} />}

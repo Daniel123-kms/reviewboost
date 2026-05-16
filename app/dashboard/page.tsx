@@ -10,11 +10,22 @@ export default async function DashboardPage() {
 
   const [{ data: reviews }, { data: businesses }] = await Promise.all([
     supabase.from("reviews").select("*").eq("user_id", user.id).order("created_at", { ascending: false }),
-    supabase.from("businesses").select("id,name,google_review_url,address,logo_url,brand_color,phone,category").eq("user_id", user.id).order("created_at").limit(1),
+    supabase.from("businesses").select("id,name,google_review_url,address,logo_url,brand_color,phone,category").eq("user_id", user.id).order("created_at"),
   ]);
 
   const activeBusiness = businesses?.[0] ?? null;
   const userName = activeBusiness?.name || user.user_metadata?.full_name || user.email?.split("@")[0] || "Mein Betrieb";
+
+  const businessesArray = (businesses ?? []).map((b) => ({
+    id: b.id,
+    name: b.name,
+    logoUrl: b.logo_url ?? null,
+    brandColor: b.brand_color ?? null,
+    googleReviewUrl: b.google_review_url ?? null,
+    address: b.address ?? null,
+    phone: b.phone ?? null,
+    category: b.category ?? null,
+  }));
 
   return (
     <DashboardClient
@@ -30,6 +41,7 @@ export default async function DashboardPage() {
         phone: activeBusiness.phone ?? null,
         category: activeBusiness.category ?? null,
       } : null}
+      businesses={businessesArray}
     />
   );
 }
