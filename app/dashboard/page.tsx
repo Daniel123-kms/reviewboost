@@ -10,13 +10,22 @@ export default async function DashboardPage() {
 
   const [{ data: reviews }, { data: businesses }] = await Promise.all([
     supabase.from("reviews").select("*").eq("user_id", user.id).order("created_at", { ascending: false }),
-    supabase.from("businesses").select("id,name,google_review_url,address,logo_url,brand_color,phone,category").eq("user_id", user.id).order("created_at"),
+    supabase.from("businesses").select("id,name,google_review_url,address,logo_url,brand_color,phone,category,place_id").eq("user_id", user.id).order("created_at"),
   ]);
 
-  const activeBusiness = businesses?.[0] ?? null;
+  // Deduplicate by place_id (keep first occurrence)
+  const seen = new Set<string>();
+  const deduped = (businesses ?? []).filter((b) => {
+    const key = b.place_id || b.id;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  const activeBusiness = deduped[0] ?? null;
   const userName = activeBusiness?.name || user.user_metadata?.full_name || user.email?.split("@")[0] || "Mein Betrieb";
 
-  const businessesArray = (businesses ?? []).map((b) => ({
+  const businessesArray = deduped.map((b) => ({
     id: b.id,
     name: b.name,
     logoUrl: b.logo_url ?? null,
@@ -31,7 +40,7 @@ export default async function DashboardPage() {
     <DashboardClient
       user={{ id: user.id, email: user.email ?? "", name: userName }}
       initialReviews={reviews ?? []}
-      hasBusinesses={(businesses?.length ?? 0) > 0}
+      hasBusinesses={deduped.length > 0}
       businessProfile={activeBusiness ? {
         name: activeBusiness.name,
         logoUrl: activeBusiness.logo_url ?? null,

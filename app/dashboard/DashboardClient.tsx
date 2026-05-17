@@ -17,7 +17,7 @@ import KonkurrenzRadarSection from "./KonkurrenzRadarSection";
 
 /* ─── TYPES ─── */
 type Review = {
-  id: string; user_id: string; author_name: string; platform: string;
+  id: string; user_id: string; business_id?: string | null; author_name: string; platform: string;
   rating: number; content: string; created_at: string; responded: boolean;
 };
 type User = { id: string; email: string; name: string };
@@ -161,6 +161,13 @@ export default function DashboardClient({ user, initialReviews, hasBusinesses = 
       ? businesses[activeBizIndex] ?? businesses[0]
       : (businessProfile ?? null);
 
+  // If we have multiple businesses, filter reviews to the active one (by business_id)
+  // Fall back to all reviews if business_id not set (old reviews without business_id)
+  const activeBizId = businesses.length > 0 ? (businesses[activeBizIndex] ?? businesses[0])?.id : null;
+  const displayReviews = activeBizId
+    ? reviews.filter((r) => !r.business_id || r.business_id === activeBizId)
+    : reviews;
+
   // Sub-tab states
   const [akquiseTab, setAkquiseTab] = useState("qrstudio");
   const [marktTab, setMarktTab] = useState("lieferplattformen");
@@ -171,10 +178,10 @@ export default function DashboardClient({ user, initialReviews, hasBusinesses = 
   const [deliveryLoading, setDeliveryLoading] = useState(false);
   const [deliveryChecked, setDeliveryChecked] = useState(false);
 
-  const avgRating = reviews.length ? (reviews.reduce((s, r) => s + r.rating, 0) / reviews.length).toFixed(1) : "—";
-  const pendingCount = reviews.filter((r) => !r.responded).length;
-  const responseRate = reviews.length ? Math.round((reviews.filter(r => r.responded).length / reviews.length) * 100) : 0;
-  const thisMonthCount = reviews.filter((r) => {
+  const avgRating = displayReviews.length ? (displayReviews.reduce((s, r) => s + r.rating, 0) / displayReviews.length).toFixed(1) : "—";
+  const pendingCount = displayReviews.filter((r) => !r.responded).length;
+  const responseRate = displayReviews.length ? Math.round((displayReviews.filter(r => r.responded).length / displayReviews.length) * 100) : 0;
+  const thisMonthCount = displayReviews.filter((r) => {
     const d = new Date(r.created_at); const now = new Date();
     return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
   }).length;
@@ -268,13 +275,13 @@ export default function DashboardClient({ user, initialReviews, hasBusinesses = 
   const meta = SECTION_META[activeSection];
 
   // Platform breakdown for home
-  const platformBreakdown = reviews.reduce((acc, r) => {
+  const platformBreakdown = displayReviews.reduce((acc, r) => {
     acc[r.platform] = (acc[r.platform] || 0) + 1;
     return acc;
   }, {} as Record<string, number>);
 
-  const recentReviews = [...reviews].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 5);
-  const lowRatingCount = reviews.filter(r => r.rating <= 2).length;
+  const recentReviews = [...displayReviews].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 5);
+  const lowRatingCount = displayReviews.filter(r => r.rating <= 2).length;
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", backgroundColor: "#f1f5f9", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, sans-serif" }}>
@@ -381,7 +388,7 @@ export default function DashboardClient({ user, initialReviews, hasBusinesses = 
           <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
             {[
               { label: `⭐ ${avgRating}`, color: "#b45309", bg: "#fef3c7" },
-              { label: `${reviews.length} Bew.`, color: "#4338ca", bg: "#eef2ff" },
+              { label: `${displayReviews.length} Bew.`, color: "#4338ca", bg: "#eef2ff" },
               { label: `${pendingCount} offen`, color: pendingCount > 0 ? "#dc2626" : "#15803d", bg: pendingCount > 0 ? "#fef2f2" : "#f0fdf4" },
             ].map((chip) => (
               <div key={chip.label} style={{ padding: "3px 9px", borderRadius: 999, backgroundColor: chip.bg, fontSize: 11, fontWeight: 600, color: chip.color, whiteSpace: "nowrap" }}>
@@ -406,7 +413,7 @@ export default function DashboardClient({ user, initialReviews, hasBusinesses = 
         </header>
 
         {/* Alerts */}
-        {reviews.filter((r) => {
+        {displayReviews.filter((r) => {
           if (dismissedAlerts.has(r.id) || r.responded || r.rating > 2) return false;
           return (Date.now() - new Date(r.created_at).getTime()) / 86400000 <= 7;
         }).slice(0, 1).map((r) => (
@@ -490,8 +497,8 @@ export default function DashboardClient({ user, initialReviews, hasBusinesses = 
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginBottom: 20 }}>
                 {[
                   { label: "Ø Bewertung", value: avgRating, icon: "⭐", bg: "#fef3c7", color: "#b45309", detail: "Von allen Plattformen" },
-                  { label: "Antwortrate", value: `${responseRate}%`, icon: "✅", bg: responseRate >= 80 ? "#f0fdf4" : responseRate >= 50 ? "#fef3c7" : "#fef2f2", color: responseRate >= 80 ? "#15803d" : responseRate >= 50 ? "#b45309" : "#dc2626", detail: `${reviews.filter(r => r.responded).length} von ${reviews.length} beantwortet` },
-                  { label: "Diesen Monat", value: String(thisMonthCount), icon: "📅", bg: "#eef2ff", color: "#4338ca", detail: `${reviews.length} gesamt` },
+                  { label: "Antwortrate", value: `${responseRate}%`, icon: "✅", bg: responseRate >= 80 ? "#f0fdf4" : responseRate >= 50 ? "#fef3c7" : "#fef2f2", color: responseRate >= 80 ? "#15803d" : responseRate >= 50 ? "#b45309" : "#dc2626", detail: `${displayReviews.filter(r => r.responded).length} von ${displayReviews.length} beantwortet` },
+                  { label: "Diesen Monat", value: String(thisMonthCount), icon: "📅", bg: "#eef2ff", color: "#4338ca", detail: `${displayReviews.length} gesamt` },
                 ].map((kpi) => (
                   <div key={kpi.label} style={{ ...card, padding: 18 }}>
                     <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
@@ -562,7 +569,7 @@ export default function DashboardClient({ user, initialReviews, hasBusinesses = 
                 <h3 style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", margin: "0 0 14px" }}>📊 Wo kommen deine Bewertungen her?</h3>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10 }}>
                   {Object.entries(platformBreakdown).sort((a, b) => b[1] - a[1]).map(([p, count]) => {
-                    const pct = reviews.length ? Math.round((count / reviews.length) * 100) : 0;
+                    const pct = displayReviews.length ? Math.round((count / displayReviews.length) * 100) : 0;
                     const colors = PLATFORM_COLORS[p] || { bg: "#f1f5f9", color: "#475569", accent: "#94a3b8" };
                     return (
                       <div key={p} style={{ padding: 12, backgroundColor: colors.bg, borderRadius: 10, textAlign: "center" }}>
@@ -591,7 +598,7 @@ export default function DashboardClient({ user, initialReviews, hasBusinesses = 
           {/* ══════ BEWERTUNGEN ══════ */}
           {activeSection === "reviews" && (
             <ReviewManagementSection
-              reviews={reviews}
+              reviews={displayReviews}
               onMarkResponded={handleMarkResponded}
               onDelete={handleDeleteReview}
               onAiReply={handleAiReply}
@@ -646,13 +653,13 @@ export default function DashboardClient({ user, initialReviews, hasBusinesses = 
               {marktTab === "konkurrenz" && (
                 <KonkurrenzRadarSection
                   businessName={activeBusiness?.name || user.name}
-                  myRating={reviews.length > 0 ? parseFloat((reviews.reduce((s, r) => s + r.rating, 0) / reviews.length).toFixed(1)) : 0}
-                  myReviewCount={reviews.length}
+                  myRating={displayReviews.length > 0 ? parseFloat((displayReviews.reduce((s, r) => s + r.rating, 0) / displayReviews.length).toFixed(1)) : 0}
+                  myReviewCount={displayReviews.length}
                   defaultAddress={activeBusiness?.address || ""}
                   businessCategory={activeBusiness?.category ?? null}
                 />
               )}
-              {marktTab === "analytics" && <AnalyticsSection reviews={reviews} />}
+              {marktTab === "analytics" && <AnalyticsSection reviews={displayReviews} />}
             </div>
           )}
 
@@ -672,7 +679,7 @@ export default function DashboardClient({ user, initialReviews, hasBusinesses = 
               {settingsTab === "settings" && <SettingsSection userId={user.id} userEmail={user.email} userName={user.name} />}
               {settingsTab === "vorlagen" && <TemplatesSection userId={user.id} />}
               {settingsTab === "widget" && <WidgetSection userId={user.id} businessName={user.name} />}
-              {settingsTab === "strategie" && <StrategieSection reviews={reviews} businessName={user.name} />}
+              {settingsTab === "strategie" && <StrategieSection reviews={displayReviews} businessName={user.name} />}
             </div>
           )}
 

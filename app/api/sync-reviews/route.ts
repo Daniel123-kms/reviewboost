@@ -58,6 +58,7 @@ export async function POST(request: Request) {
 
       await supabase.from('reviews').insert({
         user_id: user.id,
+        business_id: biz.id,
         author_name: review.author_name,
         platform: 'Google',
         rating: review.rating,
