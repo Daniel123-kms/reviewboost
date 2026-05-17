@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 
-type Business = { id: string; name: string; place_id: string | null; google_review_url: string | null; address: string | null; logo_url: string | null; brand_color: string | null };
+type Business = { id: string; name: string; place_id: string | null; google_review_url: string | null; address: string | null; logo_url: string | null; brand_color: string | null; google_connected?: boolean };
 
 export default function SettingsSection({ userId, userEmail, userName }: { userId: string; userEmail: string; userName: string }) {
   const [businesses, setBusinesses] = useState<Business[]>([]);
@@ -36,11 +36,12 @@ export default function SettingsSection({ userId, userEmail, userName }: { userI
   const [apiKeySaved, setApiKeySaved] = useState(false);
   const [syncingBiz, setSyncingBiz] = useState<string | null>(null)
   const [syncResult, setSyncResult] = useState<{ bizId: string; inserted: number; skipped: number; total: number } | null>(null)
+  const [connectingGoogle, setConnectingGoogle] = useState<string | null>(null)
 
   useEffect(() => {
     async function load() {
       const supabase = createClient();
-      const { data } = await supabase.from("businesses").select("id,name,place_id,google_review_url,address,logo_url,brand_color").eq("user_id", userId).order("created_at");
+      const { data } = await supabase.from("businesses").select("id,name,place_id,google_review_url,address,logo_url,brand_color,google_connected").eq("user_id", userId).order("created_at");
       setBusinesses(data || []);
       setLoadingBiz(false);
 
@@ -301,6 +302,34 @@ export default function SettingsSection({ userId, userEmail, userName }: { userI
                         <button onClick={() => handleDeleteBusiness(b.id)} disabled={deletingBiz === b.id} style={{ padding: "6px 10px", borderRadius: 8, border: "1.5px solid #fecaca", backgroundColor: "#fef2f2", color: "#dc2626", fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
                           {deletingBiz === b.id ? "..." : "✕"}
                         </button>
+                      </div>
+                    </div>
+
+                    {/* Google Business Connect Button */}
+                    <div style={{ borderTop: "1px solid #e8edf3", padding: "14px 18px", backgroundColor: "#fff" }}>
+                      <div style={{ marginTop: 0 }}>
+                        {b.google_connected ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px', backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8 }}>
+                            <span style={{ fontSize: 16 }}>✅</span>
+                            <div>
+                              <p style={{ fontSize: 12, fontWeight: 700, color: '#15803d', margin: 0 }}>Google Business verbunden</p>
+                              <p style={{ fontSize: 11, color: '#166534', margin: 0 }}>Alle Reviews werden automatisch geladen · Direktes Antworten aktiv</p>
+                            </div>
+                            <a href={`/api/google-business/auth?businessId=${b.id}`} style={{ marginLeft: 'auto', fontSize: 11, color: '#15803d', textDecoration: 'underline', whiteSpace: 'nowrap' }}>Neu verbinden</a>
+                          </div>
+                        ) : (
+                          <a
+                            href={`/api/google-business/auth?businessId=${b.id}`}
+                            style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 8,
+                              padding: '9px 16px', borderRadius: 8, textDecoration: 'none',
+                              background: 'linear-gradient(135deg, #4285f4, #34a853)',
+                              color: '#fff', fontSize: 12, fontWeight: 700,
+                            }}
+                          >
+                            <span>🔗</span> Google Business verbinden — Alle Reviews laden & direkt antworten
+                          </a>
+                        )}
                       </div>
                     </div>
 

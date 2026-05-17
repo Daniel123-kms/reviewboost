@@ -5,7 +5,62 @@ import { useState, useMemo } from "react";
 type Review = {
   id: string; user_id: string; author_name: string; platform: string;
   rating: number; content: string; created_at: string; responded: boolean;
+  google_review_id?: string | null; google_reply_posted?: boolean;
 };
+
+function GoogleReplyButton({ reviewId, alreadyPosted, aiReply }: {
+  reviewId: string;
+  alreadyPosted: boolean;
+  aiReply: { reviewId: string; text: string; style: string } | null;
+}) {
+  const [posting, setPosting] = useState(false);
+  const [posted, setPosted] = useState(alreadyPosted);
+  const [error, setError] = useState<string | null>(null);
+
+  const replyText = aiReply?.reviewId === reviewId ? aiReply.text : null;
+
+  if (posted) {
+    return (
+      <span style={{ fontSize: 11, color: '#15803d', fontWeight: 700, padding: '5px 10px', backgroundColor: '#f0fdf4', borderRadius: 7, border: '1px solid #bbf7d0' }}>
+        ✅ Auf Google gepostet
+      </span>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <button
+        onClick={async () => {
+          if (!replyText) { setError('Zuerst KI-Antwort generieren'); return; }
+          if (!confirm('Diese Antwort direkt auf Google posten? Das kann nicht rückgängig gemacht werden.')) return;
+          setPosting(true); setError(null);
+          const res = await fetch('/api/google-business/post-reply', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reviewId, replyText }),
+          });
+          const data = await res.json();
+          if (data.success) { setPosted(true); }
+          else { setError(data.error || 'Fehler beim Posten'); }
+          setPosting(false);
+        }}
+        disabled={posting || !replyText}
+        style={{
+          padding: '5px 10px', borderRadius: 7, border: '1.5px solid #4285f4',
+          backgroundColor: replyText ? '#eff6ff' : '#f8fafc',
+          color: replyText ? '#1d4ed8' : '#94a3b8',
+          fontSize: 11, fontWeight: 700, cursor: (posting || !replyText) ? 'not-allowed' : 'pointer',
+          fontFamily: 'inherit', whiteSpace: 'nowrap',
+          opacity: !replyText ? 0.5 : 1,
+        }}
+        title={!replyText ? 'Zuerst KI-Antwort generieren' : 'Direkt auf Google antworten'}
+      >
+        {posting ? '⏳ Wird gepostet...' : '🔵 Auf Google posten'}
+      </button>
+      {error && <span style={{ fontSize: 10, color: '#dc2626' }}>{error}</span>}
+    </div>
+  );
+}
 
 const PLATFORMS = ["Google", "Tripadvisor", "Booking.com", "Yelp", "Facebook"];
 const PLATFORM_ACCENT: Record<string, string> = {
@@ -339,6 +394,10 @@ export default function ReviewManagementSection({
                       <button onClick={() => onAiReply(review, "neutral")} style={actionBtn("#475569", "#f8fafc", "#e2e8f0")}>📝 Neutral antworten</button>
                       {!review.responded && (
                         <button onClick={() => onMarkResponded(review.id)} style={actionBtn("#15803d", "#f0fdf4", "#bbf7d0")}>✓ Als beantwortet</button>
+                      )}
+                      {/* Google direct reply button - only if review came from Google Business OAuth */}
+                      {review.google_review_id && (
+                        <GoogleReplyButton reviewId={review.id} alreadyPosted={!!review.google_reply_posted} aiReply={aiReply} />
                       )}
                       <button onClick={() => onDelete(review.id)} style={{ ...actionBtn("#dc2626", "#fef2f2", "#fecaca"), marginLeft: "auto" }}>✕</button>
                     </div>
