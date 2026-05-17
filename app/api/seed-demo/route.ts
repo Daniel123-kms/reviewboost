@@ -25,6 +25,10 @@ const REVIEWS = [
 ];
 
 export async function POST(request: Request) {
+  // Block in production — demo seeding is internal-only
+  if (process.env.NODE_ENV === "production") {
+    return NextResponse.json({ error: "Not available in production" }, { status: 403 });
+  }
   try {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();

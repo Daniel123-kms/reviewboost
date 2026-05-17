@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
 
 export async function POST(request: Request) {
+  // Auth guard — prevent anonymous API abuse
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Nicht eingeloggt" }, { status: 401 });
+
   const { address, radius, cuisine } = await request.json();
   const apiKey = process.env.GOOGLE_PLACES_API_KEY;
 
