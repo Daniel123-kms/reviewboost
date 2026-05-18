@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import AnalyticsSection from "./AnalyticsSection";
 import FunnelSection from "./FunnelSection";
@@ -146,8 +146,10 @@ export default function DashboardClient({ user, initialReviews, hasBusinesses = 
   user: User; initialReviews: Review[]; hasBusinesses?: boolean; businessProfile?: BusinessProfile | null; businesses?: Business[];
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [reviews, setReviews] = useState<Review[]>(initialReviews);
   const [activeSection, setActiveSection] = useState<Section>("home");
+  const [googleBanner, setGoogleBanner] = useState<{ type: "success" | "error"; imported?: string } | null>(() => null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [aiReply, setAiReply] = useState<{ reviewId: string; text: string; style: string } | null>(null);
@@ -185,6 +187,28 @@ export default function DashboardClient({ user, initialReviews, hasBusinesses = 
     const d = new Date(r.created_at); const now = new Date();
     return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
   }).length;
+
+  // Show Google OAuth result banner
+  useEffect(() => {
+    const google = searchParams.get("google");
+    const imported = searchParams.get("imported");
+    if (google === "connected") {
+      setGoogleBanner({ type: "success", imported: imported ?? "0" });
+      // Remove params from URL without reload
+      const url = new URL(window.location.href);
+      url.searchParams.delete("google");
+      url.searchParams.delete("imported");
+      window.history.replaceState({}, "", url.toString());
+      // Reload reviews
+      setTimeout(() => window.location.reload(), 3000);
+    } else if (google === "error") {
+      setGoogleBanner({ type: "error" });
+      const url = new URL(window.location.href);
+      url.searchParams.delete("google");
+      window.history.replaceState({}, "", url.toString());
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Auto-check delivery platforms on mount (max 1x per 24h)
   useEffect(() => {
@@ -411,6 +435,40 @@ export default function DashboardClient({ user, initialReviews, hasBusinesses = 
             </button>
           </div>
         </header>
+
+        {/* Google Connect Banner */}
+        {googleBanner && (
+          <div style={{
+            margin: "12px 28px 0",
+            padding: "12px 18px",
+            backgroundColor: googleBanner.type === "success" ? "#f0fdf4" : "#fef2f2",
+            border: `1.5px solid ${googleBanner.type === "success" ? "#bbf7d0" : "#fecaca"}`,
+            borderRadius: 12,
+            display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
+          }}>
+            <span style={{ fontSize: 20 }}>{googleBanner.type === "success" ? "✅" : "⚠️"}</span>
+            <div style={{ flex: 1 }}>
+              {googleBanner.type === "success" ? (
+                <>
+                  <p style={{ fontSize: 13, fontWeight: 700, color: "#15803d", margin: "0 0 2px" }}>
+                    Google Business erfolgreich verbunden!
+                  </p>
+                  <p style={{ fontSize: 12, color: "#166534", margin: 0 }}>
+                    {Number(googleBanner.imported) > 0
+                      ? `${googleBanner.imported} Bewertungen importiert. Seite wird neu geladen...`
+                      : "Verbindung hergestellt. Neue Bewertungen werden automatisch geladen."}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p style={{ fontSize: 13, fontWeight: 700, color: "#991b1b", margin: "0 0 2px" }}>Google Verbindung fehlgeschlagen</p>
+                  <p style={{ fontSize: 12, color: "#b91c1c", margin: 0 }}>Bitte versuche es erneut unter Einstellungen → Google Business verbinden.</p>
+                </>
+              )}
+            </div>
+            <button onClick={() => setGoogleBanner(null)} style={{ padding: "4px 8px", borderRadius: 7, border: "none", backgroundColor: "transparent", fontSize: 14, cursor: "pointer", color: "#64748b" }}>✕</button>
+          </div>
+        )}
 
         {/* Alerts */}
         {displayReviews.filter((r) => {
